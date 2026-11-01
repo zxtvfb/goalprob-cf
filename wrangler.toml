@@ -1,0 +1,31 @@
+name = "goalprob"
+main = "src/index.mjs"
+compatibility_date = "2026-10-01"
+
+# Serves index.html. Requests to static assets are free and do not
+# count against the 100,000 daily request limit on the free plan.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Cron triggers. A Worker receives every cron through one scheduled()
+# handler, so src/index.mjs picks the job by the minute it fires on:
+#   :00  pull    fetch fixtures          up to 3 API-Football calls
+#   :20  digest  build team records      no API calls
+#   :40  odds    bookmaker prices        ~15 Odds API credits
+#
+# The free plan allows 5 cron triggers per account.
+[triggers]
+crons = ["0 * * * *", "20 * * * *", "40 6 * * *"]
+
+# Secrets are NOT set here — they would end up in git.
+# Set each one with:  npx wrangler secret put NAME
+#   FIREBASE_PROJECT_ID
+#   FIREBASE_CLIENT_EMAIL
+#   FIREBASE_PRIVATE_KEY
+#   APIFOOTBALL_KEY
+#   ODDS_API_KEY      (optional — odds and Flip x2 need it)
+#   ADMIN_KEY         (optional — closes the /jobs/ URLs)
+
+[observability]
+enabled = true
