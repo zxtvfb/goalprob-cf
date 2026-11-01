@@ -1,3 +1,6 @@
+# This MUST match the Worker name in the Cloudflare dashboard. If it does
+# not, a deploy targets a different Worker than the one holding your
+# secrets, and every run reports the secrets as missing.
 name = "goalprob-cf"
 main = "src/index.mjs"
 compatibility_date = "2026-10-01"
