@@ -184,6 +184,19 @@ export function firestore(env) {
       }
     });
     if (res.status === 404) return null;
+    if (res.status === 429) {
+      throw new Error(
+        'Firestore daily quota exhausted. The free tier allows 50,000 reads and ' +
+        '20,000 writes a day, and it resets at midnight Pacific. Nothing is lost — ' +
+        'the import cursor is saved, so pressing the same button after the reset ' +
+        'carries on from where it stopped.');
+    }
+    if (res.status === 403) {
+      const t = await res.text().catch(() => '');
+      throw new Error(
+        `Firestore refused the service account. Check FIREBASE_PROJECT_ID matches the ` +
+        `key, and that the Firestore API is enabled. ${t.slice(0, 160)}`);
+    }
     if (!res.ok) {
       const t = await res.text().catch(() => '');
       throw new Error(`Firestore ${res.status} on ${path.replace(api, '')}: ${t.slice(0, 200)}`);
