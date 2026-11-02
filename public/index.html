@@ -1,0 +1,1809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GoalProb — Football Probability Engine</title>
+<style>
+  :root{
+    --bg:#0b0f14; --bg2:#121820; --bg3:#1a222d; --line:#232d3a;
+    --fg:#e8eef5; --mut:#8b9bb0; --dim:#5d6b7e;
+    --acc:#2dd4a7; --acc2:#39b0ff; --warn:#f5a524; --bad:#f4525f;
+    --home:#39b0ff; --draw:#8b9bb0; --away:#f5a524;
+    --r:12px; --rs:8px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--fg);
+    font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding-bottom:84px; overscroll-behavior-y:none;
+  }
+  .wrap{max-width:720px;margin:0 auto;padding:0 12px}
+
+  /* ---------- header ---------- */
+  header{
+    position:sticky;top:0;z-index:40;background:rgba(11,15,20,.93);
+    backdrop-filter:blur(12px);border-bottom:1px solid var(--line);
+    padding-top:env(safe-area-inset-top);
+  }
+  .hd{display:flex;align-items:center;gap:10px;padding:12px 0 10px}
+  .logo{font-weight:800;letter-spacing:-.4px;font-size:18px}
+  .logo span{color:var(--acc)}
+  .pill{
+    margin-left:auto;font-size:11px;color:var(--mut);background:var(--bg3);
+    border:1px solid var(--line);border-radius:99px;padding:4px 10px;white-space:nowrap
+  }
+  .pill.ok{color:var(--acc);border-color:#1d4a3e}
+  .pill.err{color:var(--bad);border-color:#4a2026}
+
+  /* date strip */
+  .dates{display:flex;gap:6px;overflow-x:auto;padding:0 0 10px;scrollbar-width:none}
+  .dates::-webkit-scrollbar{display:none}
+  .dchip{
+    flex:0 0 auto;min-width:58px;text-align:center;padding:7px 10px;border-radius:var(--rs);
+    background:var(--bg2);border:1px solid var(--line);cursor:pointer;line-height:1.25
+  }
+  .dchip b{display:block;font-size:14px}
+  .dchip i{display:block;font-size:10px;color:var(--dim);font-style:normal;text-transform:uppercase;letter-spacing:.5px}
+  .dchip.on{background:var(--acc);border-color:var(--acc);color:#04231b}
+  .dchip.on i{color:#04231b;opacity:.72}
+
+  /* ---------- generic ---------- */
+  .card{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);margin:10px 0;overflow:hidden}
+  .lg-hd{
+    display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:var(--bg3);border-bottom:1px solid var(--line);cursor:pointer
+  }
+  .lg-hd img{width:16px;height:16px;object-fit:contain;border-radius:2px;flex:0 0 auto}
+  .lg-hd .nm{font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lg-hd .ct{font-size:11px;color:var(--dim);white-space:nowrap}
+  .lg-hd .cnt{margin-left:auto;font-size:11px;color:var(--dim)}
+
+  .mx{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+  .mx:last-child{border-bottom:0}
+  .mx:active{background:var(--bg3)}
+  .mx .tm{flex:1;min-width:0}
+  .mx .tr{display:flex;align-items:center;gap:7px;padding:1px 0}
+  .mx .tr img{width:17px;height:17px;object-fit:contain;flex:0 0 auto}
+  .mx .tr span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+  .mx .sc{font-size:14px;font-weight:700;width:18px;text-align:right;flex:0 0 auto;color:var(--mut)}
+  .mx .sc.hi{color:var(--fg)}
+  .mx .meta{flex:0 0 auto;text-align:right;min-width:46px}
+  .mx .tt{font-size:12px;color:var(--mut);font-variant-numeric:tabular-nums}
+  .mx .live{font-size:11px;color:var(--bad);font-weight:700}
+  .mx .ft{font-size:10px;color:var(--dim)}
+
+  /* probability bar */
+  .pbar{display:flex;height:5px;border-radius:3px;overflow:hidden;background:var(--bg3);margin-top:7px}
+  .pbar i{display:block;height:100%}
+  .pbar .h{background:var(--home)} .pbar .d{background:var(--draw)} .pbar .a{background:var(--away)}
+  .pct{display:flex;gap:10px;margin-top:5px;font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+  .pct b{color:var(--mut);font-weight:600}
+  .pct .q{margin-left:auto}
+
+  /* ---------- nav ---------- */
+  nav{
+    position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;
+    background:rgba(18,24,32,.96);backdrop-filter:blur(12px);border-top:1px solid var(--line);
+    padding-bottom:env(safe-area-inset-bottom)
+  }
+  nav button{
+    flex:1;background:0;border:0;color:var(--dim);font:inherit;font-size:10px;
+    padding:9px 0 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px
+  }
+  nav button svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  nav button.on{color:var(--acc)}
+
+  /* ---------- views ---------- */
+  .view{display:none} .view.on{display:block}
+  .ttl{font-size:12px;text-transform:uppercase;letter-spacing:1.1px;color:var(--dim);margin:16px 2px 8px;font-weight:700}
+  .empty{text-align:center;color:var(--dim);padding:44px 20px;font-size:14px;line-height:1.6}
+  .empty b{display:block;color:var(--mut);font-size:15px;margin-bottom:6px}
+
+  input,select{
+    width:100%;background:var(--bg2);border:1px solid var(--line);color:var(--fg);
+    border-radius:var(--rs);padding:11px 12px;font:inherit;outline:0
+  }
+  input:focus,select:focus{border-color:var(--acc)}
+  select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),linear-gradient(135deg,var(--dim) 50%,transparent 50%);
+    background-position:calc(100% - 16px) 50%,calc(100% - 11px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:34px}
+
+  .btn{
+    width:100%;background:var(--acc);color:#04231b;border:0;border-radius:var(--rs);
+    padding:12px;font:inherit;font-weight:700;cursor:pointer;margin-top:10px
+  }
+  .btn:disabled{opacity:.4}
+  .btn.alt{background:var(--bg3);color:var(--fg);border:1px solid var(--line)}
+
+  /* stat grid */
+  .sg{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line)}
+  .sg>div{background:var(--bg2);padding:10px 12px}
+  .sg .k{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px}
+  .sg .v{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+  .sg .v small{font-size:11px;color:var(--dim);font-weight:500;margin-left:3px}
+
+  /* comparison rows */
+  .cmp{padding:10px 12px;border-bottom:1px solid var(--line)}
+  .cmp:last-child{border-bottom:0}
+  .cmp .lbl{font-size:11px;color:var(--dim);text-align:center;text-transform:uppercase;letter-spacing:.5px}
+  .cmp .row{display:flex;align-items:center;gap:8px;margin-top:4px}
+  .cmp .n{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;width:50px}
+  .cmp .n.r{text-align:right}
+  .cmp .trk{flex:1;display:flex;gap:3px;height:6px}
+  .cmp .trk i{display:block;height:100%;border-radius:3px;background:var(--bg3)}
+  .cmp .trk i.f{background:var(--home)} .cmp .trk i.g{background:var(--away)}
+  .cmp .trk .l{display:flex;justify-content:flex-end;flex:1}
+  .cmp .trk .r2{display:flex;flex:1}
+
+  .form{display:flex;gap:3px;margin-top:6px}
+  .form i{
+    width:17px;height:17px;border-radius:4px;font-size:10px;font-weight:700;font-style:normal;
+    display:flex;align-items:center;justify-content:center;color:#04231b
+  }
+  .form i.W{background:var(--acc)} .form i.D{background:var(--draw)} .form i.L{background:var(--bad);color:#fff}
+
+  /* modal */
+  .ov{position:fixed;inset:0;z-index:60;background:rgba(5,8,11,.72);backdrop-filter:blur(3px);display:none}
+  .ov.on{display:block}
+  .sheet{
+    position:absolute;left:0;right:0;bottom:0;max-height:90vh;overflow-y:auto;
+    background:var(--bg);border-radius:18px 18px 0 0;border-top:1px solid var(--line);
+    padding:0 12px calc(26px + env(safe-area-inset-bottom));
+    animation:up .22s cubic-bezier(.3,.8,.4,1)
+  }
+  @keyframes up{from{transform:translateY(22px);opacity:.4}}
+  .grab{width:36px;height:4px;background:var(--line);border-radius:2px;margin:9px auto 4px}
+  .sh-hd{display:flex;align-items:center;gap:10px;padding:8px 2px 12px;position:sticky;top:0;background:var(--bg);z-index:2}
+  .sh-hd .t{font-weight:700;font-size:16px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .x{background:var(--bg3);border:1px solid var(--line);color:var(--mut);border-radius:99px;width:30px;height:30px;font-size:17px;line-height:1;cursor:pointer;flex:0 0 auto}
+
+  .sr{display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+  .sr:last-child{border-bottom:0}
+  .sr img{width:22px;height:22px;object-fit:contain;flex:0 0 auto}
+  .sr .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+  .sr .c{font-size:11px;color:var(--dim);flex:0 0 auto}
+
+  /* segmented filter */
+  .seg{display:flex;gap:4px;background:var(--bg2);border:1px solid var(--line);
+       border-radius:var(--rs);padding:3px;margin:10px 0}
+  .seg button{flex:1;background:0;border:0;color:var(--mut);font:inherit;font-size:12px;
+       font-weight:600;padding:8px 6px;border-radius:6px;cursor:pointer;white-space:nowrap}
+  .seg button.on{background:var(--acc);color:#04231b}
+
+  /* headline pick */
+  .pick{display:flex;align-items:center;gap:6px;margin-top:7px;font-size:12px}
+  .pick .tag{background:var(--bg3);border:1px solid var(--line);border-radius:5px;
+       padding:2px 7px;font-weight:700;color:var(--fg);white-space:nowrap}
+  .pick .pp{font-weight:700;font-variant-numeric:tabular-nums;color:var(--acc)}
+  .pick .eg{font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums}
+  .pick.hot .tag{border-color:#1d4a3e;color:var(--acc)}
+  .lgline{font-size:10px;color:var(--dim);margin-bottom:4px;overflow:hidden;
+       text-overflow:ellipsis;white-space:nowrap}
+
+  /* bookmaker-coverage toggle */
+  .chk{display:flex;align-items:center;gap:9px;padding:9px 11px;margin:8px 0;
+       background:var(--bg2);border:1px solid var(--line);border-radius:var(--rs);
+       font-size:12px;color:var(--mut);cursor:pointer}
+  .chk input{width:auto;flex:0 0 auto;accent-color:var(--acc);margin:0}
+  .chk span{flex:1}
+  .chk em{font-style:normal;font-size:11px;color:var(--dim)}
+
+  /* market comparison */
+  .mkt{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:11px;
+       color:var(--dim);font-variant-numeric:tabular-nums;flex-wrap:wrap}
+  .mkt b{color:var(--mut);font-weight:600}
+  .val{font-weight:700;border-radius:4px;padding:1px 6px;white-space:nowrap}
+  .val.pos{background:#10352b;color:var(--acc)}
+  .val.neg{background:#2a1a1d;color:var(--bad)}
+  .val.flat{background:var(--bg3);color:var(--dim)}
+
+  .note{font-size:12px;color:var(--dim);line-height:1.55;padding:10px 12px;background:var(--bg2);border:1px solid var(--line);border-radius:var(--rs);margin:10px 0}
+  .skel{height:60px;background:linear-gradient(90deg,var(--bg2),var(--bg3),var(--bg2));background-size:200% 100%;animation:sk 1.2s infinite;border-radius:var(--r);margin:10px 0}
+  @keyframes sk{to{background-position:-200% 0}}
+  .hint{font-size:11px;color:var(--dim);margin-top:6px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="hd">
+      <div class="logo">Goal<span>Prob</span></div>
+      <div class="pill" id="status">connecting…</div>
+    </div>
+    <div class="dates" id="dates"></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- ============ MATCHES ============ -->
+  <section class="view on" id="v-matches">
+    <input id="msearch" placeholder="Search a team…" autocomplete="off" style="margin:10px 0 0">
+    <div class="seg" id="sortSeg">
+      <button class="on" data-s="league">By league</button>
+      <button data-s="conf">By confidence</button>
+      <button data-s="edge">By value</button>
+    </div>
+    <label class="chk" id="bookWrap">
+      <input type="checkbox" id="bookOnly">
+      <span>Only leagues my bookmaker covers</span>
+      <em id="bookCount"></em>
+    </label>
+    <div id="fixtures"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+  </section>
+
+  <!-- ============ TEAMS ============ -->
+  <section class="view" id="v-teams">
+    <div class="ttl">Team profiles</div>
+    <input id="tsearch" placeholder="Search a team…" autocomplete="off">
+    <div class="hint">Profiles are built from each team's last 45 matches.</div>
+    <div id="tresults"></div>
+  </section>
+
+  <!-- ============ CALCULATOR ============ -->
+  <section class="view" id="v-calc">
+    <div class="ttl">Head-to-head calculator</div>
+    <div class="card" style="padding:12px">
+      <div style="font-size:11px;color:var(--dim);margin-bottom:5px">HOME TEAM</div>
+      <input id="cHome" placeholder="Search home team…" autocomplete="off">
+      <div id="cHomeR"></div>
+      <div style="font-size:11px;color:var(--dim);margin:12px 0 5px">AWAY TEAM</div>
+      <input id="cAway" placeholder="Search away team…" autocomplete="off">
+      <div id="cAwayR"></div>
+      <button class="btn" id="cGo" disabled>Calculate probability</button>
+    </div>
+    <div id="cOut"></div>
+  </section>
+
+  <!-- ============ ALGORITHMS ============ -->
+  <section class="view" id="v-algo">
+    <div class="ttl">Strategies</div>
+    <div id="algoList"></div>
+    <div id="algoOut"></div>
+  </section>
+
+  <!-- ============ ABOUT ============ -->
+  <section class="view" id="v-info">
+    <div class="ttl">How the model works</div>
+    <div class="card" style="padding:14px;font-size:13px;line-height:1.65;color:var(--mut)">
+      <p style="margin:0 0 10px"><b style="color:var(--fg)">1 · Team profile.</b> Every team keeps a rolling window of its last 45 matches. From those: goals scored and conceded per game, BTTS rate, clean sheets, scored-in-both-halves, win/draw/loss split, and first-half results — each also split by home and away.</p>
+      <p style="margin:0 0 10px"><b style="color:var(--fg)">2 · Attack &amp; defence strength.</b> Each rate is divided by its league average to give a strength index. 1.00 is league-average; 1.30 means 30% above. Teams with few matches are shrunk toward the league mean so a 5-game sample can't produce a wild number.</p>
+      <p style="margin:0 0 10px"><b style="color:var(--fg)">3 · Expected goals.</b> Home λ = home attack × away defence × league home average. Away λ the same way. A separate pair of λ values is built for the first half from halftime scores only.</p>
+      <p style="margin:0 0 10px"><b style="color:var(--fg)">4 · Score matrix.</b> A Poisson grid over 0–8 goals each side gives the probability of every scoreline. Summing the cells gives 1X2, BTTS, over/under and correct score. A Dixon-Coles correction lifts low-scoring draws, which raw Poisson underrates.</p>
+      <p style="margin:0"><b style="color:var(--warn)">Caveat.</b> The model sees goals, not injuries, suspensions, motivation, weather or rotation. It is a baseline to price against, not a tip.</p>
+    </div>
+    <div class="ttl">Data</div>
+    <div class="card" style="padding:14px;font-size:13px;line-height:1.65;color:var(--mut)" id="meta"></div>
+  </section>
+
+</div>
+
+<nav>
+  <button class="on" data-v="matches">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v4m0 10v4M3 12h4m10 0h4"/></svg>Matches</button>
+  <button data-v="teams">
+    <svg viewBox="0 0 24 24"><path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 20v-2a4 4 0 0 0-3-3.87"/></svg>Teams</button>
+  <button data-v="calc">
+    <svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 11h2m4 0h2M8 16h2m4 0h2"/></svg>Calculator</button>
+  <button data-v="algo">
+    <svg viewBox="0 0 24 24"><path d="M4 17l5-5-5-5M12 19h8"/></svg>Algorithms</button>
+  <button data-v="info">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5M12 8h.01"/></svg>Model</button>
+</nav>
+
+<div class="ov" id="ov"><div class="sheet" id="sheet"></div></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+import { getFirestore, doc, getDoc, collection, query, where, orderBy, limit, getDocs, documentId }
+  from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+
+/* ════════════════════════════════════════════════════════════
+   1.  FIREBASE  —  paste your web config here (SETUP.md step 3)
+   ════════════════════════════════════════════════════════════ */
+const firebaseConfig = {
+  apiKey:            "AIzaSyCXQa90edRos4BzoK4md2OYeq_ogYoesjQ",
+  authDomain:        "zxtvfb-bb48a.firebaseapp.com",
+  projectId:         "zxtvfb-bb48a",
+  storageBucket:     "zxtvfb-bb48a.firebasestorage.app",
+  messagingSenderId: "982389556203",
+  appId:             "1:982389556203:web:6013bd601a9d7cf19f0fae",
+  measurementId:     "G-2RGRKDW7ZV"
+};
+
+let db = null, dbOK = false;
+try {
+  db = getFirestore(initializeApp(firebaseConfig));
+  dbOK = !firebaseConfig.projectId.startsWith('PASTE');
+} catch (e) { console.error(e); }
+
+/* ════════════════════════════════════════════════════════════
+   2.  PROBABILITY ENGINE
+   ════════════════════════════════════════════════════════════ */
+const PM = {
+  GRID: 9,          // scorelines 0..8
+  K: 5,             // shrinkage strength (pseudo-matches toward league mean)
+  RHO: -0.045,      // Dixon-Coles low-score correction
+
+  // fallback league priors (used when a league bundle has no averages yet)
+  P:  { h: 1.46, a: 1.17, h1h: 0.64, h1a: 0.51 },
+
+  /* ---- shots-based expected goals ----
+     Goals are a tiny sample (~1.35/team/match) so the rate is noisy.
+     Shots on target run ~4.3/match, so that rate settles about three
+     times faster. CONV turns shots on target into expected goals;
+     W_SHOTS is how much to trust them at full coverage, from inverse-
+     variance weighting of the two estimators. Coverage scales it down
+     when only some matches carry shot data. */
+  CONV: 0.31,       // goals per shot on target, league-average
+  W_SHOTS: 0.75,
+
+  // base rates, used to show how far a pick sits above chance
+  BASE: { h: 0.45, d: 0.26, a: 0.29, btts: 0.52, o25: 0.53 },
+
+  pois(k, l) {
+    if (l <= 0) return k === 0 ? 1 : 0;
+    let p = Math.exp(-l);
+    for (let i = 1; i <= k; i++) p = p * l / i;
+    return p;
+  },
+  tau(i, j, lh, la) {
+    const r = this.RHO;
+    if (i === 0 && j === 0) return 1 - lh * la * r;
+    if (i === 0 && j === 1) return 1 + lh * r;
+    if (i === 1 && j === 0) return 1 + la * r;
+    if (i === 1 && j === 1) return 1 - r;
+    return 1;
+  },
+  shrink(rate, prior, n) { return (rate * n + prior * this.K) / (n + this.K); },
+
+  /* Blend a goals-based rate with a shots-derived one, then shrink.
+     With no shot data this is exactly the old goals-only behaviour. */
+  effRate(goalRate, sotRate, n, sn, conv, prior) {
+    let rate = goalRate;
+    if (sn > 0 && sotRate > 0) {
+      const cover = Math.min(sn / Math.max(n, 1), 1);
+      const w = this.W_SHOTS * cover;
+      rate = w * (sotRate * conv) + (1 - w) * goalRate;
+    }
+    return this.shrink(rate, prior, n);
+  },
+
+  /* Build a 9x9 scoreline matrix from two expected-goal values */
+  matrix(lh, la) {
+    const m = [], G = this.GRID;
+    let tot = 0;
+    for (let i = 0; i < G; i++) {
+      m[i] = [];
+      for (let j = 0; j < G; j++) {
+        const v = this.pois(i, lh) * this.pois(j, la) * this.tau(i, j, lh, la);
+        m[i][j] = v; tot += v;
+      }
+    }
+    for (let i = 0; i < G; i++) for (let j = 0; j < G; j++) m[i][j] /= tot;
+    return m;
+  },
+
+  /* Expected goals for a fixture, from two stat blocks */
+  lambdas(H, A, lg) {
+    const pH  = (lg && lg.h  > 0) ? lg.h  : this.P.h;
+    const pA  = (lg && lg.a  > 0) ? lg.a  : this.P.a;
+    const p1H = (lg && lg.h1h> 0) ? lg.h1h: this.P.h1h;
+    const p1A = (lg && lg.h1a> 0) ? lg.h1a: this.P.h1a;
+
+    // home side uses its HOME record, away side its AWAY record.
+    // Each rate blends goals with shots on target where available.
+    const conv = (lg && lg.conv > 0) ? lg.conv : this.CONV;
+    const hAtt = this.effRate(H.hgf, H.hstf, H.hn, H.hsn, conv, pH) / pH;  // home attack
+    const hDef = this.effRate(H.hga, H.hsta, H.hn, H.hsn, conv, pA) / pA;  // home defence
+    const aAtt = this.effRate(A.agf, A.astf, A.an, A.asn, conv, pA) / pA;
+    const aDef = this.effRate(A.aga, A.asta, A.an, A.asn, conv, pH) / pH;
+
+    const h1Att = this.shrink(H.h1gf, p1H, H.hn) / p1H;
+    const h1Def = this.shrink(H.h1ga, p1A, H.hn) / p1A;
+    const a1Att = this.shrink(A.a1gf, p1A, A.an) / p1A;
+    const a1Def = this.shrink(A.a1ga, p1H, A.an) / p1H;
+
+    const cap = v => Math.min(Math.max(v, 0.05), 5.0);
+    return {
+      lh:  cap(hAtt * aDef * pH),
+      la:  cap(aAtt * hDef * pA),
+      lh1: cap(h1Att * a1Def * p1H),
+      la1: cap(a1Att * h1Def * p1A)
+    };
+  },
+
+  /* Full probability set for a fixture */
+  run(H, A, lg) {
+    const L = this.lambdas(H, A, lg);
+    const m  = this.matrix(L.lh,  L.la);
+    const m1 = this.matrix(L.lh1, L.la1);
+    const G = this.GRID;
+
+    let hw=0, dr=0, aw=0, btts=0, o15=0, o25=0, o35=0, csH=0, csA=0;
+    const scores = [];
+    for (let i = 0; i < G; i++) for (let j = 0; j < G; j++) {
+      const p = m[i][j];
+      if (i > j) hw += p; else if (i === j) dr += p; else aw += p;
+      if (i > 0 && j > 0) btts += p;
+      if (i + j > 1) o15 += p;
+      if (i + j > 2) o25 += p;
+      if (i + j > 3) o35 += p;
+      if (j === 0) csH += p;
+      if (i === 0) csA += p;
+      if (i < 5 && j < 5) scores.push({ s: i + '-' + j, p });
+    }
+    let h1w=0, h1d=0, h1a=0;
+    for (let i = 0; i < G; i++) for (let j = 0; j < G; j++) {
+      const p = m1[i][j];
+      if (i > j) h1w += p; else if (i === j) h1d += p; else h1a += p;
+    }
+    scores.sort((x, y) => y.p - x.p);
+
+    // P(team scores in both halves) — 2nd-half lambda = full minus 1st
+    const sbh = (lf, l1) => (1 - this.pois(0, l1)) * (1 - this.pois(0, Math.max(lf - l1, 0.02)));
+
+    /* ---- the headline pick ----
+       Highest-probability outcome across the markets that are genuinely
+       competitive. Markets like Over 1.5 are left out: they sit near 75%
+       almost every match and would win every time without saying anything.
+       `edge` is how far above the base rate the pick sits — that, not the
+       raw percentage, is what separates a real signal from a market that
+       is simply likely by default. */
+    const B = this.BASE;
+    const cands = [
+      { k: '1',    label: 'Home win',       p: hw,       base: B.h },
+      { k: 'X',    label: 'Draw',           p: dr,       base: B.d },
+      { k: '2',    label: 'Away win',       p: aw,       base: B.a },
+      { k: 'BTTS', label: 'Both score',     p: btts,     base: B.btts },
+      { k: 'NB',   label: 'Not both score', p: 1 - btts, base: 1 - B.btts },
+      { k: 'O25',  label: 'Over 2.5',       p: o25,      base: B.o25 },
+      { k: 'U25',  label: 'Under 2.5',      p: 1 - o25,  base: 1 - B.o25 }
+    ];
+    cands.sort((x, y) => y.p - x.p);
+    const pick = { ...cands[0], edge: cands[0].p - cands[0].base };
+
+    return {
+      hw, dr, aw, btts, o15, o25, o35, csH, csA,
+      h1w, h1d, h1a,
+      sbhH: sbh(L.lh, L.lh1), sbhA: sbh(L.la, L.la1),
+      lh: L.lh, la: L.la, lh1: L.lh1, la1: L.la1,
+      top: scores.slice(0, 6),
+      pick, ranked: cands
+    };
+  },
+
+  /* Recompute a stat block from a raw match array (used on team profiles) */
+  profile(ms) {
+    const s = {
+      n:0, hn:0, an:0, gf:0, ga:0,
+      hgf:0, hga:0, agf:0, aga:0,
+      h1gf:0, h1ga:0, a1gf:0, a1ga:0,
+      w:0, d:0, l:0, h1w:0, h1d:0, h1l:0,
+      btts:0, cs:0, sbh:0, o25:0, fts:0,
+      form:'',
+      hsn:0, asn:0, hstf:0, hsta:0, astf:0, asta:0, sot:0, sotA:0
+    };
+    let hgfT=0,hgaT=0,agfT=0,agaT=0,h1gfT=0,h1gaT=0,a1gfT=0,a1gaT=0;
+    let hstT=0,hstaT=0,astT=0,astaT=0,sotT=0,sotaT=0;
+    for (const m of ms) {
+      const gf=+m.gf||0, ga=+m.ga||0, f1=+m.hgf||0, a1=+m.hga||0;
+      const s2=gf-f1;
+      s.n++; s.gf+=gf; s.ga+=ga;
+      if (gf>ga) s.w++; else if (gf===ga) s.d++; else s.l++;
+      if (f1>a1) s.h1w++; else if (f1===a1) s.h1d++; else s.h1l++;
+      if (gf>0 && ga>0) s.btts++;
+      if (ga===0) s.cs++;
+      if (gf===0) s.fts++;
+      if (f1>0 && s2>0) s.sbh++;
+      if (gf+ga>2.5) s.o25++;
+      if (m.h) { s.hn++; hgfT+=gf; hgaT+=ga; h1gfT+=f1; h1gaT+=a1; }
+      else     { s.an++; agfT+=gf; agaT+=ga; a1gfT+=f1; a1gaT+=a1; }
+
+      const st=Number(m.st), sta=Number(m.sta);
+      if (Number.isFinite(st) && Number.isFinite(sta)) {
+        sotT+=st; sotaT+=sta;
+        if (m.h) { s.hsn++; hstT+=st; hstaT+=sta; }
+        else     { s.asn++; astT+=st; astaT+=sta; }
+      }
+    }
+    const d=(x,y)=> y>0 ? x/y : 0;
+    s.hgf=d(hgfT,s.hn); s.hga=d(hgaT,s.hn);
+    s.agf=d(agfT,s.an); s.aga=d(agaT,s.an);
+    s.h1gf=d(h1gfT,s.hn); s.h1ga=d(h1gaT,s.hn);
+    s.a1gf=d(a1gfT,s.an); s.a1ga=d(a1gaT,s.an);
+    s.hstf=d(hstT,s.hsn); s.hsta=d(hstaT,s.hsn);
+    s.astf=d(astT,s.asn); s.asta=d(astaT,s.asn);
+    s.sot=d(sotT,s.hsn+s.asn); s.sotA=d(sotaT,s.hsn+s.asn);
+    s.form = ms.slice(0,6).map(m => m.gf>m.ga?'W':m.gf===m.ga?'D':'L').join('');
+    return s;
+  }
+};
+
+/* ════════════════════════════════════════════════════════════
+   3.  STATE + HELPERS
+   ════════════════════════════════════════════════════════════ */
+const S = {
+  date: todayISO(),
+  sort: 'league',         // 'league' | 'conf' | 'edge'
+  query: '',              // team search in the matches tab
+  bookOnly: false,        // restrict to leagues the bookmaker covers
+  bookLeagues: null,      // Set of league ids, from config/leagues
+  statCache: new Map(),   // leagueId -> {teams:{id:stats}, avg:{h,a,h1h,h1a}}
+  oddsCache: new Map(),   // dateISO -> { fixtureKey: priced }
+  teamCache: new Map(),   // teamId -> full team doc
+  calc: { h:null, a:null }
+};
+
+function todayISO(d = new Date()) {
+  return new Date(d.getTime() - d.getTimezoneOffset()*6e4).toISOString().slice(0,10);
+}
+function shiftDay(iso, n) { const d = new Date(iso+'T12:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
+function pct(x) { return (x*100).toFixed(0) + '%'; }
+function pct1(x){ return (x*100).toFixed(1) + '%'; }
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function odds(p) { return p > 0.004 ? (1/p).toFixed(2) : '—'; }
+function setStatus(txt, cls) { const e = document.getElementById('status'); e.textContent = txt; e.className = 'pill ' + (cls||''); }
+
+const FINISHED = new Set(['FT','AET','PEN']);
+const LIVE     = new Set(['1H','HT','2H','ET','BT','P','LIVE','INT']);
+
+/* ════════════════════════════════════════════════════════════════
+   Read throttle.
+
+   A busy date has a few hundred fixtures, and every row asks for its
+   league's stats at once. Firing all of those simultaneously saturates
+   the connection, and anything requested afterwards — like the detail
+   sheet you just tapped — waits behind the whole queue. Capping the
+   number in flight keeps the list filling steadily and leaves room for
+   a tap to be answered straight away.
+   ════════════════════════════════════════════════════════════════ */
+const gate = (max) => {
+  let active = 0; const queue = [];
+  const pump = () => {
+    while (active < max && queue.length) {
+      const { fn, res, rej } = queue.shift();
+      active++;
+      Promise.resolve().then(fn).then(res, rej).finally(() => { active--; pump(); });
+    }
+  };
+  return fn => new Promise((res, rej) => { queue.push({ fn, res, rej }); pump(); });
+};
+const readLimit = gate(6);
+
+/* Firestore's getDoc() has no timeout. On a weak connection it does not
+   fail — it queues the read and the promise simply never settles. Nothing
+   rejects, nothing logs, and anything awaiting it waits forever. Every
+   read here is raced against a deadline so a dead connection surfaces as
+   an error instead of a permanent wait. */
+const READ_TIMEOUT = 9000;
+function withTimeout(p, ms = READ_TIMEOUT, what = 'read') {
+  return new Promise((res, rej) => {
+    const t = setTimeout(() => rej(new Error(what + ' timed out after ' + (ms/1000) + 's')), ms);
+    p.then(v => { clearTimeout(t); res(v); },
+           e => { clearTimeout(t); rej(e); });
+  });
+}
+
+/* Caches hold the in-flight PROMISE, not the resolved value. Storing the
+   value only on completion meant forty rows of the same league each
+   missed the cache and issued their own identical read.
+
+   A rejected promise is evicted. Keeping it meant one failed read poisoned
+   that key for the life of the page: every later tap got the same dead
+   promise back and failed identically, so the app never recovered from a
+   single dropped connection without a reload. */
+function cached(map, key, load) {
+  if (map.has(key)) return map.get(key);
+  const p = withTimeout(readLimit(load), READ_TIMEOUT, key)
+    .catch(e => { map.delete(key); throw e; });
+  map.set(key, p);
+  return p;
+}
+/* Callers that would rather have nothing than an error */
+const soft = p => p.catch(() => null);
+
+/* The ingest stores big collections as JSON strings rather than native
+   Firestore arrays and maps. Encoding them natively costs more CPU than
+   a Worker invocation is allowed on Cloudflare's free plan, and reading
+   one string is cheaper here too. Native values are still accepted so
+   documents written by the older build keep working. */
+function unpack(v) {
+  if (Array.isArray(v)) return v;
+  if (typeof v !== 'string' || !v) return [];
+  try { const o = JSON.parse(v); return Array.isArray(o) ? o : []; } catch { return []; }
+}
+function unpackObj(v) {
+  if (v && typeof v === 'object') return v;
+  if (typeof v !== 'string' || !v) return {};
+  try { const o = JSON.parse(v); return (o && typeof o === 'object') ? o : {}; } catch { return {}; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   4.  DATA ACCESS
+   ════════════════════════════════════════════════════════════ */
+async function getDayFixtures(dateISO) {
+  if (!dbOK) return null;
+  const snap = await getDocs(query(collection(db,'fixtures'), where('date','==',dateISO)));
+  const out = [];
+  snap.forEach(d => { const rows = unpack(d.data().f); if (rows.length) out.push(...rows); });
+  return out;
+}
+function getLeagueStats(leagueId) {
+  if (!leagueId || !dbOK) return Promise.resolve(null);
+  return cached(S.statCache, leagueId, async () => {
+    const ck = 'gp_lg_' + leagueId;
+    try {
+      const raw = localStorage.getItem(ck);
+      if (raw) {
+        const o = JSON.parse(raw);
+        /* Short TTL on purpose. A six-hour cache meant that after a history
+           import the browser kept serving pre-import stats for most of a day
+           with no way to tell. Fifteen minutes costs one read per league. */
+        if (Date.now() - o.t < 9e5) return o.v;
+      }
+    } catch {}
+    const d = await getDoc(doc(db,'cache','league_' + leagueId));
+    let v = d.exists() ? d.data() : null;
+    if (v) v = { ...v, teams: unpackObj(v.teams) };
+    try { localStorage.setItem(ck, JSON.stringify({t:Date.now(), v})); } catch {}
+    return v;
+  });
+}
+/* Bookmaker prices for one date, written by the odds function.
+   One document per date, so this is a single read however many matches. */
+function getOdds(dateISO) {
+  if (!dbOK) return Promise.resolve(null);
+  return cached(S.oddsCache, dateISO, async () => {
+    const d = await getDoc(doc(db, 'odds', dateISO));
+    return d.exists() ? unpackObj(d.data().o) : {};
+  });
+}
+
+/* The ingest writes the odds lookup key onto every fixture as `k`.
+   It is NOT recomputed here on purpose: an earlier version did, the two
+   implementations drifted, and no price ever matched a fixture without
+   anything reporting an error. One implementation, server side. */
+const oddsFor = (odds, f) => (odds && f && f.k) ? (odds[f.k] || null) : null;
+
+/* The market card, rendered on its own so the detail sheet can lay out a
+   slot for it and fill that slot whenever the prices arrive. */
+function marketHtml(v) {
+  return `
+    <div class="ttl">Model against the market</div>
+    <div class="card">
+      ${v.legs.map(l => {
+        const cls = l.ev >= 0.05 ? 'pos' : l.ev <= -0.05 ? 'neg' : 'flat';
+        return `<div class="cmp">
+          <div class="row" style="gap:10px">
+            <div style="width:52px;font-weight:700">${esc(l.label)}</div>
+            <div style="flex:1;font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums">
+              model ${pct1(l.model)} · fair ${pct1(l.fair)} · best ${l.price.toFixed(2)}
+            </div>
+            <div class="val ${cls}">${l.ev >= 0 ? '+' : ''}${(l.ev*100).toFixed(1)}%</div>
+          </div></div>`;
+      }).join('')}
+    </div>
+    <div class="note">Prices from ${v.books} bookmaker${v.books === 1 ? '' : 's'}; fair probability devigged from <b>${esc(v.book)}</b>, whose margin was ${((v.over-1)*100).toFixed(1)}%. EV is what each unit returns on average <i>if the model is right</i> — which is the part worth doubting. A large positive number usually means the market knows something the model cannot see, so treat it as a question rather than an answer.</div>`;
+}
+
+/* Model probability minus the devigged market probability, per outcome.
+   The market's own margin is already removed, so a positive number means
+   the model disagrees with a fair price rather than with a padded one. */
+function valueOf(r, od) {
+  if (!od || !(od.fh > 0)) return null;
+  const legs = [
+    { k: '1', label: 'Home', model: r.hw, fair: od.fh, price: od.bh },
+    { k: 'X', label: 'Draw', model: r.dr, fair: od.fd, price: od.bd },
+    { k: '2', label: 'Away', model: r.aw, fair: od.fa, price: od.ba }
+  ];
+  /* over/under only exists for the leagues the sweep can afford both
+     markets on, so it is added when present rather than assumed */
+  if (od.ou && od.ou.bo > 1 && od.ou.bu > 1) {
+    legs.push({ k: 'O25', label: 'Over 2.5',  model: r.o25,     fair: od.ou.fo, price: od.ou.bo });
+    legs.push({ k: 'U25', label: 'Under 2.5', model: 1 - r.o25, fair: od.ou.fu, price: od.ou.bu });
+  }
+  const priced = legs.map(l => ({ ...l, edge: l.model - l.fair, ev: l.model * l.price - 1 }));
+  const ranked = [...priced].sort((a, b) => b.ev - a.ev);
+  /* `best` is the biggest disagreement with the market. `top` is simply
+     the outcome the model thinks is most likely — which is the one worth
+     betting, and the one the By value list is built from. They are often
+     different legs: the market disagrees most about outcomes the model
+     does not actually favour. */
+  const top = [...priced].sort((a, b) => b.model - a.model)[0];
+  return { best: ranked[0], top, legs: priced, ranked,
+           book: od.bk, over: od.ov, books: od.books };
+}
+
+/* ════════════════════════════════════════════════════════════════
+   ALGORITHMS
+
+   Each strategy takes the priced fixture list and returns ranked
+   selections. To add one, append an object with the same shape —
+   nothing else in the app needs to change.
+
+   An item is { f, r, v }: the fixture, the model result, and the
+   market comparison (null when no bookmaker price is stored).
+   ════════════════════════════════════════════════════════════════ */
+const ALGOS = [
+  {
+    id: 'flipx2',
+    name: 'Flip x2',
+    blurb: 'A single selection priced as close to 2.00 as possible, ranked by how confident the model is. At evens you need better than 50% to profit, so the list is ordered by model probability.',
+    needsOdds: true,
+    tracked: true,        // the picks job keeps a ledger for this one
+    params: { target: 2.00, band: 0.35, minProb: 0.50 },
+    requirement: p => `Flip x2 needs a price within ${p.band.toFixed(2)} of ` +
+                      `${p.target.toFixed(2)} and a model probability above ${pct(p.minProb)}.`,
+
+    run(items, p) {
+      const out = [];
+      for (const { f, r, v } of items) {
+        if (!v) continue;                         // needs a real price
+        for (const leg of v.legs) {
+          if (!(leg.price > 1)) continue;
+          const dist = Math.abs(leg.price - p.target);
+          if (dist > p.band) continue;            // not near enough to evens
+          if (leg.model < p.minProb) continue;    // below break-even, skip
+          out.push({
+            f, leg, dist,
+            breakEven: 1 / leg.price,
+            margin: leg.model - (1 / leg.price)   // model probability over break-even
+          });
+        }
+      }
+      /* highest model probability first; closest to 2.00 breaks ties */
+      out.sort((a, b) => b.leg.model - a.leg.model || a.dist - b.dist);
+      return out;
+    },
+
+    render(x) {
+      return {
+        pick: `${x.leg.label} @ ${x.leg.price.toFixed(2)}`,
+        headline: pct1(x.leg.model),
+        sub: `break-even ${pct(x.breakEven)} · ${x.margin >= 0 ? '+' : ''}${(x.margin*100).toFixed(1)}pp clear · ${x.leg.ev >= 0 ? '+' : ''}${(x.leg.ev*100).toFixed(1)}% EV`
+      };
+    }
+  },
+
+  {
+    id: 'htd',
+    name: 'HTD',
+    blurb: 'Half-time draw. The model prices the first half as its own match — half the goals, so far more of them end level than full matches do. Ranked by probability, highest first.',
+    needsOdds: false,     // no bookmaker posts a half-time draw price in the sweep
+    params: { minProb: 0.30 },
+    requirement: p => `HTD needs a half-time draw probability of at least ${pct(p.minProb)}.`,
+
+    run(items, p) {
+      const out = [];
+      for (const { f, r, v } of items) {
+        if (!(r.h1d > 0)) continue;
+        if (r.h1d < p.minProb) continue;
+        out.push({
+          f, r,
+          prob: r.h1d,
+          fair: 1 / r.h1d,
+          /* How much more likely the first half is to be level than the
+             full match — the whole reason this market exists. A tight
+             low-scoring game shows a big gap here. */
+          lift: r.h1d - r.dr,
+          goals: r.lh1 + r.la1
+        });
+      }
+      out.sort((a, b) => b.prob - a.prob);
+      return out;
+    },
+
+    render(x) {
+      return {
+        pick: 'Half-time draw',
+        headline: pct1(x.prob),
+        sub: `fair odds ${x.fair.toFixed(2)} · full-time draw ${pct(x.prob - x.lift)} ` +
+             `· ${x.goals.toFixed(2)} goals expected before the break`
+      };
+    }
+  }
+];
+
+function getTeam(id) {
+  if (!id || !dbOK) return Promise.resolve(null);
+  return cached(S.teamCache, String(id), async () => {
+    const d = await getDoc(doc(db,'teams', String(id)));
+    return d.exists() ? d.data() : null;
+  });
+}
+async function searchTeams(term) {
+  if (!dbOK || term.length < 2) return [];
+  const t = term.toLowerCase();
+  const snap = await getDocs(query(
+    collection(db,'teams'),
+    orderBy('search'), where('search','>=',t), where('search','<=', t+'\uf8ff'),
+    limit(14)
+  ));
+  const out = []; snap.forEach(d => out.push({ id:d.id, ...d.data() }));
+  return out;
+}
+
+/* Pull the two stat blocks a fixture needs.
+
+   The league bundle is one read for a whole league, so it is tried first.
+   But a bundle can lag: the history import writes team documents directly
+   and a bundle rebuilt before that still holds the old, thinner stats.
+   When the bundle looks thinner than the team document, the team document
+   wins — otherwise a team with 45 imported matches shows up as 1 here
+   while its full profile shows all 45. */
+async function statsFor(fx, strict = false) {
+  /* Rows and background jobs would rather show nothing than throw, so they
+     swallow read failures. The detail sheet passes strict: a failure there
+     must reach the person, otherwise a dropped connection is indis-
+     tinguishable from a team that genuinely has no history.
+
+     The league bundle stays soft either way. Losing it is survivable —
+     the team documents still answer, and the model falls back to its own
+     league priors — so a failed bundle read should degrade, not abort. */
+  const wrap = strict ? (p => p) : soft;
+  const lg = await soft(getLeagueStats(fx.lid));
+  const pick = async id => {
+    /* If the bundle holds this team, that IS the answer.
+
+       An earlier rule treated a bundled team with fewer than ten matches
+       as suspect and read its full document to double-check. That was
+       written for stale bundles after a history import, but most leagues
+       are not in the import at all — their teams legitimately have one or
+       two matches — so the check fired on almost every row and turned a
+       single league read into hundreds of team reads. history now rebuilds
+       its bundles itself, so the suspicion is no longer needed. */
+    const bundled = lg && lg.teams ? lg.teams[id] : null;
+    if (bundled) return bundled;
+    const t = await wrap(getTeam(id));
+    return t && t.s ? t.s : null;
+  };
+  const [H, A] = await Promise.all([pick(fx.hid), pick(fx.aid)]);
+  return { H, A, avg: lg ? lg.avg : null };
+}
+
+/* Below this many matches a profile carries almost no information: the
+   shrinkage pulls it to the league average, so the "prediction" would be
+   the league average dressed up as a forecast. Better to show nothing. */
+const MIN_MATCHES = 4;
+
+/* By value ranks on price, and price rises as probability falls, so with
+   no floor the top of the list would be whatever the model is least sure
+   about. A selection has to be at least this likely before it earns a
+   place — "highest probability bets, longest odds first" rather than
+   "longest odds". Lower it to see more, raise it to see only strong ones. */
+const MIN_VALUE_P = 0.40;
+
+/* ════════════════════════════════════════════════════════════
+   5.  MATCHES VIEW
+   ════════════════════════════════════════════════════════════ */
+function renderDates() {
+  const box = document.getElementById('dates');
+  const t = todayISO();
+  box.innerHTML = '';
+  /* seven days: three back, today, three forward — the same window the
+     ingest keeps, so every chip has data behind it (or will once the API
+     plan allows fixtures more than one day ahead) */
+  for (let i = -3; i <= 3; i++) {
+    const iso = shiftDay(t, i);
+    const d = new Date(iso + 'T12:00:00Z');
+    const b = document.createElement('div');
+    b.className = 'dchip' + (iso === S.date ? ' on' : '');
+    b.innerHTML = `<i>${i===0?'Today':d.toLocaleDateString(undefined,{weekday:'short',timeZone:'UTC'})}</i><b>${d.getUTCDate()}</b>`;
+    b.onclick = () => { S.date = iso; renderDates(); renderFixtures(); };
+    box.appendChild(b);
+  }
+  const on = box.querySelector('.dchip.on');
+  if (on) on.scrollIntoView({ inline:'center', block:'nearest' });
+}
+
+async function renderFixtures() {
+  const box = document.getElementById('fixtures');
+  if (!dbOK) {
+    box.innerHTML = `<div class="empty"><b>Firebase not configured</b>Open index.html and paste your web config into <code>firebaseConfig</code> (SETUP.md step 3).</div>`;
+    setStatus('not configured','err'); return;
+  }
+  box.innerHTML = '<div class="skel"></div><div class="skel"></div>';
+  let fx;
+  try { fx = await getDayFixtures(S.date); setStatus('live','ok'); }
+  catch (e) { console.error(e); setStatus('read error','err');
+    box.innerHTML = `<div class="empty"><b>Could not read Firestore</b>Check your security rules allow public reads (SETUP.md step 5).</div>`; return; }
+
+  if (!fx || !fx.length) {
+    box.innerHTML = `<div class="empty"><b>No fixtures stored for this date</b>The ingest job fills dates as it runs. Trigger it from Netlify under Cloud compute → Functions, or wait for the next hourly run.</div>`;
+    return;
+  }
+
+  /* filters apply to every sort mode */
+  const all = fx.length;
+  fx = applyFilters(fx);
+  if (!fx.length) {
+    box.innerHTML = `<div class="empty"><b>Nothing matches your filters</b>${
+      all} fixture${all === 1 ? '' : 's'} stored for this date.${
+      S.query ? ` No team matching “${esc(S.query)}” plays today — try another date.` : ''}</div>`;
+    return;
+  }
+
+  if (S.sort === 'league') renderByLeague(fx, box);
+  else                     await renderRanked(fx, box, S.sort);
+}
+
+/* Team search and the bookmaker-coverage toggle, applied before sorting. */
+function applyFilters(fx) {
+  let out = fx;
+  if (S.bookOnly && S.bookLeagues && S.bookLeagues.size) {
+    out = out.filter(f => S.bookLeagues.has(String(f.lid)));
+  }
+  const q = S.query.trim().toLowerCase();
+  if (q) {
+    out = out.filter(f =>
+      String(f.hname || '').toLowerCase().includes(q) ||
+      String(f.aname || '').toLowerCase().includes(q) ||
+      String(f.lname || '').toLowerCase().includes(q) ||
+      String(f.ctry  || '').toLowerCase().includes(q));
+  }
+  return out;
+}
+
+/* ---- league view: country A→Z, then league within each country ---- */
+function renderByLeague(fx, box) {
+  const groups = new Map();
+  for (const f of fx) {
+    const k = f.lid || 0;
+    if (!groups.has(k)) groups.set(k, { lid:k, name:f.lname, country:f.ctry, flag:f.flag, items:[] });
+    groups.get(k).items.push(f);
+  }
+
+  /* Numeric collation so "Ligue 2" follows "Ligue 1" rather than
+     "Ligue 10", and base sensitivity so accents and case do not split
+     a country. Leagues with no country sort last instead of first. */
+  const cmp = (x, y) => String(x || '').localeCompare(String(y || ''), undefined,
+    { numeric: true, sensitivity: 'base' });
+
+  const list = [...groups.values()].sort((a, b) => {
+    const ac = (a.country || '').trim(), bc = (b.country || '').trim();
+    if (!ac !== !bc) return ac ? -1 : 1;          // unknown country to the end
+    return cmp(ac, bc) || cmp(a.name, b.name);
+  });
+
+  box.innerHTML = '';
+  for (const g of list) {
+    g.items.sort((a,b) => (a.ts||0) - (b.ts||0));
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML =
+      `<div class="lg-hd">
+         ${g.flag ? `<img src="${esc(g.flag)}" alt="" loading="lazy">` : ''}
+         <span class="nm">${esc(g.name||'Unknown league')}</span>
+         <span class="ct">${esc(g.country||'')}</span>
+         <span class="cnt">${g.items.length}</span>
+       </div>`;
+    const body = document.createElement('div');
+    card.appendChild(body);
+    for (const f of g.items) body.appendChild(fixtureRow(f));
+    box.appendChild(card);
+  }
+}
+
+/* ---- ranked views ----
+   mode 'conf' : strongest prediction first, regardless of price
+   mode 'edge' : biggest disagreement with the bookmaker first  */
+async function renderRanked(fx, box, mode) {
+  const pending = fx.filter(f => !FINISHED.has(f.st));
+  if (!pending.length) {
+    box.innerHTML = `<div class="empty"><b>Nothing left to price</b>Every match on this date has finished. Switch to a forward date for upcoming fixtures.</div>`;
+    return;
+  }
+
+  box.innerHTML = `<div class="note">Pricing ${pending.length} matches…</div><div class="skel"></div><div class="skel"></div>`;
+
+  const odds = await soft(getOdds(S.date));
+  const scored = [];
+  let unpriced = 0, noPrice = 0;
+
+  const results = await Promise.all(pending.map(async f => {
+    try {
+      const { H, A, avg } = await statsFor(f);
+      if (!H || !A || H.n < MIN_MATCHES || A.n < MIN_MATCHES) return null;
+      const r = PM.run(H, A, avg);
+      const od = oddsFor(odds, f);
+      return { f, r, v: valueOf(r, od) };
+    } catch { return null; }
+  }));
+  let belowFloor = 0;
+  for (const x of results) {
+    if (!x) { unpriced++; continue; }
+    if (mode === 'edge') {
+      if (!x.v) { noPrice++; continue; }
+      if (x.v.top.model < MIN_VALUE_P) { belowFloor++; continue; }
+    }
+    scored.push(x);
+  }
+
+  if (!scored.length) {
+    box.innerHTML = mode === 'edge'
+      ? `<div class="empty"><b>No bookmaker prices for this date</b>Run the odds function, and make sure these leagues are in its sweep list.</div>`
+      : `<div class="empty"><b>No match can be priced yet</b>Both teams need stored history before a prediction exists. Run the history import, or wait for profiles to build.</div>`;
+    return;
+  }
+
+  /* By value: each match contributes the outcome the model rates most
+     likely, and those are ordered by the price you would actually be paid
+     — longest odds at the top. Sorting by price alone would otherwise
+     fill the top with coin-flips the model has no opinion on, so a
+     selection has to clear MIN_VALUE_P before it is listed at all. */
+  scored.sort(mode === 'edge'
+    ? (a, b) => b.v.top.price - a.v.top.price || b.v.top.model - a.v.top.model
+    : (a, b) => b.r.pick.p - a.r.pick.p);
+
+  box.innerHTML = '';
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML =
+    `<div class="lg-hd">
+       <span class="nm">${mode === 'edge' ? 'Best odds first' : 'Strongest predictions first'}</span>
+       <span class="cnt">${scored.length}</span>
+     </div>`;
+  const body = document.createElement('div');
+  card.appendChild(body);
+  for (const x of scored) body.appendChild(fixtureRow(x.f, x.r, true, x.v));
+  box.appendChild(card);
+
+  const notes = [];
+  if (unpriced) notes.push(`${unpriced} match${unpriced === 1 ? '' : 'es'} could not be priced — one or both teams have no stored history yet.`);
+  if (noPrice)  notes.push(`${noPrice} match${noPrice === 1 ? ' has' : 'es have'} no bookmaker price stored, so no value can be computed.`);
+  if (belowFloor) notes.push(`${belowFloor} match${belowFloor === 1 ? '' : 'es'} left out because the model's best outcome is under ${pct(MIN_VALUE_P)} — long odds on an outcome nobody expects is not value.`);
+  if (mode === 'edge') notes.push(`Each match shows the outcome the model rates most likely, ordered by the price you would be paid, longest first. Price and probability pull against each other, so the top of this list is where the model is confident and the market still pays well — which is also where it is most worth asking what the market knows that the model cannot see.`);
+  for (const t of notes) {
+    const n = document.createElement('div');
+    n.className = 'note'; n.textContent = t;
+    box.appendChild(n);
+  }
+}
+
+/* `pre` is a precomputed PM.run result; when absent it is fetched lazily.
+   `showLeague` adds a league line, needed once rows are mixed together. */
+function fixtureRow(f, pre, showLeague, value) {
+  const el = document.createElement('div');
+  el.className = 'mx';
+  const fin = FINISHED.has(f.st), live = LIVE.has(f.st);
+  const time = f.ts
+    ? new Date(f.ts*1000).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})
+    : '--:--';
+  const meta = live ? `<div class="live">LIVE</div>`
+            : fin  ? `<div class="ft">FT</div>`
+                   : `<div class="tt">${time}</div>`;
+  const sh = (fin||live) ? `<div class="sc ${f.gh>f.ga?'hi':''}">${f.gh ?? ''}</div>` : '';
+  const sa = (fin||live) ? `<div class="sc ${f.ga>f.gh?'hi':''}">${f.ga ?? ''}</div>` : '';
+
+  el.innerHTML =
+    `<div class="tm">
+       ${showLeague ? `<div class="lgline">${esc(f.ctry||'')}${f.ctry&&f.lname?' · ':''}${esc(f.lname||'')}</div>` : ''}
+       <div class="tr">${f.hlogo?`<img src="${esc(f.hlogo)}" loading="lazy" alt="">`:''}<span>${esc(f.hname)}</span>${sh}</div>
+       <div class="tr">${f.alogo?`<img src="${esc(f.alogo)}" loading="lazy" alt="">`:''}<span>${esc(f.aname)}</span>${sa}</div>
+       <div class="pslot"></div>
+     </div>
+     <div class="meta">${meta}</div>`;
+
+  el.onclick = () => openFixture(f);
+
+  const paint = (r, v) => {
+    const slot = el.querySelector('.pslot');
+    if (!slot || !r) return;
+    slot.innerHTML = predictionHTML(r, v);
+  };
+
+  if (pre) paint(pre, value);
+  else if (!fin) {
+    /* Priced only once the row is actually on screen.
+
+       Pricing every row up front meant a few hundred fixtures each
+       pulling their teams' documents — and a team document carries the
+       packed 45-match window, so that is megabytes of transfer before
+       anything is readable, with a tap queued behind all of it. A date
+       has maybe eight visible rows; those are the only ones worth
+       fetching until the person scrolls. */
+    watchRow(el, async () => {
+      const [{ H, A, avg }, odds] = await Promise.all([statsFor(f), soft(getOdds(S.date))]);
+      if (!H || !A) return;
+      if (H.n < MIN_MATCHES || A.n < MIN_MATCHES) { thin(el, H, A); return; }
+      const r = PM.run(H, A, avg);
+      paint(r, valueOf(r, oddsFor(odds, f)));
+    });
+  }
+  return el;
+}
+
+/* Says plainly that there is not enough history, rather than printing a
+   league-average guess that looks like a forecast. */
+function thin(el, H, A) {
+  const slot = el.querySelector('.pslot');
+  if (!slot) return;
+  const n = Math.min(H ? H.n || 0 : 0, A ? A.n || 0 : 0);
+  slot.innerHTML = `<div class="pct" style="margin-top:7px">
+    <span style="color:var(--dim)">not enough history${n ? ` — ${n} match${n === 1 ? '' : 'es'}` : ''}</span></div>`;
+}
+
+/* Runs `job` the first time `el` comes into view, then stops watching.
+   Falls back to running immediately where IntersectionObserver is absent. */
+const rowObserver = ('IntersectionObserver' in window)
+  ? new IntersectionObserver((entries, obs) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        obs.unobserve(e.target);
+        const job = e.target.__price;
+        if (job) { e.target.__price = null; job().catch(() => {}); }
+      }
+    }, { rootMargin: '400px 0px' })     // start a little before it scrolls in
+  : null;
+
+function watchRow(el, job) {
+  if (!rowObserver) { job().catch(() => {}); return; }
+  el.__price = job;
+  rowObserver.observe(el);
+}
+
+/* the probability strip, the headline pick, and the market comparison */
+function predictionHTML(r, v) {
+  const p = r.pick;
+  const hot = p.edge >= 0.15 ? ' hot' : '';
+
+  let market = '';
+  if (v) {
+    /* The outcome the model actually favours, with the price you would be
+       paid for it. This used to show the highest-EV leg instead, which is
+       a different bet — the row said "Away 4.50" while the prediction
+       above it said "Home win", and the By value list was ordered by a
+       third thing again. One leg, shown and sorted on consistently. */
+    const b = v.top;
+    const cls = b.ev >= 0.05 ? 'pos' : b.ev <= -0.05 ? 'neg' : 'flat';
+    market = `
+      <div class="mkt">
+        <span><b>${esc(b.label)}</b> best ${b.price.toFixed(2)}</span>
+        <span>model ${pct(b.model)} · fair ${pct(b.fair)}</span>
+        <span class="val ${cls}">${b.ev >= 0 ? '+' : ''}${(b.ev*100).toFixed(1)}% EV</span>
+      </div>`;
+  }
+
+  return `
+    <div class="pbar">
+      <i class="h" style="width:${r.hw*100}%"></i>
+      <i class="d" style="width:${r.dr*100}%"></i>
+      <i class="a" style="width:${r.aw*100}%"></i>
+    </div>
+    <div class="pct">
+      <span><b>1</b> ${pct(r.hw)}</span>
+      <span><b>X</b> ${pct(r.dr)}</span>
+      <span><b>2</b> ${pct(r.aw)}</span>
+      <span class="q"><b>BTTS</b> ${pct(r.btts)} · <b>O2.5</b> ${pct(r.o25)}</span>
+    </div>
+    <div class="pick${hot}">
+      <span class="tag">${esc(p.label)}</span>
+      <span class="pp">${pct(p.p)}</span>
+      <span class="eg">${p.edge >= 0 ? '+' : ''}${(p.edge*100).toFixed(0)}pp vs average</span>
+    </div>${market}`;
+}
+
+/* ════════════════════════════════════════════════════════════
+   6.  FIXTURE DETAIL SHEET
+   ════════════════════════════════════════════════════════════ */
+const ov = document.getElementById('ov'), sheet = document.getElementById('sheet');
+ov.onclick = e => { if (e.target === ov) closeSheet(); };
+function openSheet(html) { sheet.innerHTML = html; ov.classList.add('on'); sheet.scrollTop = 0; document.body.style.overflow='hidden'; }
+function closeSheet() { ov.classList.remove('on'); document.body.style.overflow=''; }
+window.closeSheet = closeSheet;
+
+async function openFixture(f) {
+  const head = `<div class="grab"></div>
+    <div class="sh-hd"><div class="t">${esc(f.hname)} v ${esc(f.aname)}</div>
+    <button class="x" onclick="closeSheet()">×</button></div>`;
+
+  openSheet(head + `<div class="skel"></div><div class="skel"></div>`);
+  window.__retryFixture = () => openFixture(f);
+
+  /* The stats decide whether there is anything to show, so they are
+     awaited. The prices are not: they are an extra column on a panel that
+     is useful without them. Awaiting both together meant a slow or stalled
+     odds read held the whole sheet on its skeletons — the panel never
+     appeared at all, rather than appearing without a market card. */
+  let H, A, avg;
+  try {
+    ({ H, A, avg } = await statsFor(f, true));
+  } catch (e) {
+    openSheet(head + `<div class="empty"><b>Could not load this match</b>
+      ${esc(e && e.message ? e.message : String(e))}<br><br>
+      This is a connection problem, not missing data — the reads above never
+      came back. Check your signal and try again.<br><br>
+      <button class="btn alt" style="margin-top:4px" onclick="window.__retryFixture()">Try again</button></div>`);
+    return;
+  }
+
+  if (!H || !A || !H.n || !A.n) {
+    openSheet(head + `<div class="empty"><b>Not enough history yet</b>
+      ${!H||!H.n ? esc(f.hname)+' has no stored matches. ' : ''}${!A||!A.n ? esc(f.aname)+' has no stored matches. ' : ''}
+      Profiles fill in as the ingest job collects results, or you can prioritise these teams in the seed queue.</div>`);
+    return;
+  }
+
+  const r = PM.run(H, A, avg);
+  const bar = (a,b,c) => `<div class="pbar"><i class="h" style="width:${a*100}%"></i><i class="d" style="width:${b*100}%"></i><i class="a" style="width:${c*100}%"></i></div>`;
+
+  /* Prices arrive on their own schedule and fill the slot left for them. */
+  const marketCard = `<div id="mktSlot"></div>`;
+  soft(getOdds(S.date)).then(odds => {
+    const slot = document.getElementById('mktSlot');
+    if (!slot) return;                       // sheet closed or replaced
+    const v = valueOf(r, oddsFor(odds, f));
+    if (!v) return;                          // no price for this fixture
+    slot.innerHTML = marketHtml(v);
+  });
+
+  openSheet(`
+    <div class="grab"></div>
+    <div class="sh-hd"><div class="t">${esc(f.hname)} v ${esc(f.aname)}</div>
+      <button class="x" onclick="closeSheet()">×</button></div>
+
+    <div class="card" style="padding:12px">
+      <div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.7px">Prediction</div>
+      <div style="display:flex;align-items:baseline;gap:9px;margin-top:6px">
+        <div style="font-size:19px;font-weight:800">${esc(r.pick.label)}</div>
+        <div style="font-size:19px;font-weight:800;color:var(--acc);font-variant-numeric:tabular-nums">${pct1(r.pick.p)}</div>
+      </div>
+      <div class="hint">${r.pick.edge >= 0 ? '+' : ''}${(r.pick.edge*100).toFixed(0)} points above the base rate for this market · next best ${esc(r.ranked[1].label)} ${pct(r.ranked[1].p)}</div>
+    </div>
+
+    <div class="card" style="padding:12px">
+      <div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.7px">Full time result</div>
+      ${bar(r.hw,r.dr,r.aw)}
+      <div class="pct" style="font-size:13px;margin-top:8px">
+        <span><b>1</b> ${pct1(r.hw)} <small style="color:var(--dim)">(${odds(r.hw)})</small></span>
+        <span><b>X</b> ${pct1(r.dr)} <small style="color:var(--dim)">(${odds(r.dr)})</small></span>
+        <span><b>2</b> ${pct1(r.aw)} <small style="color:var(--dim)">(${odds(r.aw)})</small></span>
+      </div>
+      <div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.7px;margin-top:14px">First half result</div>
+      ${bar(r.h1w,r.h1d,r.h1a)}
+      <div class="pct" style="font-size:13px;margin-top:8px">
+        <span><b>1</b> ${pct1(r.h1w)}</span><span><b>X</b> ${pct1(r.h1d)}</span><span><b>2</b> ${pct1(r.h1a)}</span>
+      </div>
+      <div class="hint">Expected goals — ${esc(f.hname)} ${r.lh.toFixed(2)} · ${esc(f.aname)} ${r.la.toFixed(2)}</div>
+    </div>
+
+    ${marketCard}
+
+    <div class="ttl">Goal markets</div>
+    <div class="card"><div class="sg">
+      <div><div class="k">Both teams score</div><div class="v">${pct(r.btts)}<small>${odds(r.btts)}</small></div></div>
+      <div><div class="k">Over 2.5 goals</div><div class="v">${pct(r.o25)}<small>${odds(r.o25)}</small></div></div>
+      <div><div class="k">Over 1.5 goals</div><div class="v">${pct(r.o15)}</div></div>
+      <div><div class="k">Over 3.5 goals</div><div class="v">${pct(r.o35)}</div></div>
+      <div><div class="k">${esc(f.hname)} clean sheet</div><div class="v">${pct(r.csH)}</div></div>
+      <div><div class="k">${esc(f.aname)} clean sheet</div><div class="v">${pct(r.csA)}</div></div>
+      <div><div class="k">${esc(f.hname)} both halves</div><div class="v">${pct(r.sbhH)}</div></div>
+      <div><div class="k">${esc(f.aname)} both halves</div><div class="v">${pct(r.sbhA)}</div></div>
+    </div></div>
+
+    <div class="ttl">Most likely scores</div>
+    <div class="card"><div class="sg" style="grid-template-columns:repeat(3,1fr)">
+      ${r.top.map(s=>`<div><div class="k">${s.s}</div><div class="v">${pct1(s.p)}</div></div>`).join('')}
+    </div></div>
+
+    <div class="ttl">Last 45 — head to head profile</div>
+    <div class="card">${compare(H, A, f.hname, f.aname)}</div>
+
+    <div class="note">Home columns use ${esc(f.hname)}'s <b>home</b> record (${H.hn} matches) and away columns use ${esc(f.aname)}'s <b>away</b> record (${A.an} matches), which is what the model prices on.</div>
+
+    <button class="btn alt" onclick='window.__openTeam(${JSON.stringify(String(f.hid))})'>${esc(f.hname)} full profile</button>
+    <button class="btn alt" onclick='window.__openTeam(${JSON.stringify(String(f.aid))})'>${esc(f.aname)} full profile</button>
+  `);
+}
+
+/* side-by-side comparison rows */
+function compare(H, A, hn, an) {
+  const rows = [
+    ['Matches in window', H.n, A.n, v=>v, Math.max(H.n,A.n,1)],
+    ['Avg goals scored', H.gf/Math.max(H.n,1), A.gf/Math.max(A.n,1), v=>v.toFixed(2), 3],
+    ['Avg goals conceded', H.ga/Math.max(H.n,1), A.ga/Math.max(A.n,1), v=>v.toFixed(2), 3],
+    ['Both teams scored', H.btts/Math.max(H.n,1), A.btts/Math.max(A.n,1), pct, 1],
+    ['Clean sheets', H.cs/Math.max(H.n,1), A.cs/Math.max(A.n,1), pct, 1],
+    ['Scored both halves', H.sbh/Math.max(H.n,1), A.sbh/Math.max(A.n,1), pct, 1],
+    ['Failed to score', H.fts/Math.max(H.n,1), A.fts/Math.max(A.n,1), pct, 1],
+    ['Over 2.5 goals', H.o25/Math.max(H.n,1), A.o25/Math.max(A.n,1), pct, 1],
+    ['Win rate', H.w/Math.max(H.n,1), A.w/Math.max(A.n,1), pct, 1],
+    ['Draw rate', H.d/Math.max(H.n,1), A.d/Math.max(A.n,1), pct, 1],
+    ['Loss rate', H.l/Math.max(H.n,1), A.l/Math.max(A.n,1), pct, 1],
+    ['First-half win rate', H.h1w/Math.max(H.n,1), A.h1w/Math.max(A.n,1), pct, 1],
+    ['First-half draw rate', H.h1d/Math.max(H.n,1), A.h1d/Math.max(A.n,1), pct, 1],
+  ];
+  let out = `<div class="cmp">
+    <div class="lbl">Recent form</div>
+    <div class="row">
+      <div class="trk" style="height:auto">
+        <div class="l"><div class="form">${(H.form||'').slice(0,5).split('').reverse().map(c=>`<i class="${c}">${c}</i>`).join('')}</div></div>
+        <div class="r2"><div class="form">${(A.form||'').slice(0,5).split('').map(c=>`<i class="${c}">${c}</i>`).join('')}</div></div>
+      </div>
+    </div></div>`;
+
+  for (const [lbl, a, b, fmt, max] of rows) {
+    const wa = Math.min(a/max,1)*100, wb = Math.min(b/max,1)*100;
+    out += `<div class="cmp">
+      <div class="lbl">${esc(lbl)}</div>
+      <div class="row">
+        <div class="n">${fmt(a)}</div>
+        <div class="trk">
+          <div class="l"><i class="f" style="width:${wa}%"></i></div>
+          <div class="r2"><i class="g" style="width:${wb}%"></i></div>
+        </div>
+        <div class="n r">${fmt(b)}</div>
+      </div></div>`;
+  }
+  return out;
+}
+
+/* ════════════════════════════════════════════════════════════
+   7.  TEAM PROFILE
+   ════════════════════════════════════════════════════════════ */
+window.__openTeam = async function (id) {
+  openSheet(`<div class="grab"></div><div class="sh-hd"><div class="t">Loading…</div>
+    <button class="x" onclick="closeSheet()">×</button></div><div class="skel"></div><div class="skel"></div>`);
+  const t = await soft(getTeam(id));
+  if (!t) { openSheet(`<div class="grab"></div><div class="sh-hd"><div class="t">Team</div>
+    <button class="x" onclick="closeSheet()">×</button></div>
+    <div class="empty"><b>No profile stored</b>This team has not been ingested yet.</div>`); return; }
+
+  const ms = unpack(t.m);
+  const s  = ms.length ? PM.profile(ms) : (t.s || null);
+  if (!s || !s.n) { openSheet(`<div class="grab"></div><div class="sh-hd"><div class="t">${esc(t.name)}</div>
+    <button class="x" onclick="closeSheet()">×</button></div>
+    <div class="empty"><b>No matches in window</b>${esc(t.name)} is registered but has no results stored yet.</div>`); return; }
+
+  const d = x => (x/s.n);
+  openSheet(`
+    <div class="grab"></div>
+    <div class="sh-hd">
+      ${t.logo?`<img src="${esc(t.logo)}" style="width:26px;height:26px;object-fit:contain" alt="">`:''}
+      <div class="t">${esc(t.name)}</div><button class="x" onclick="closeSheet()">×</button></div>
+
+    <div class="card" style="padding:12px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div><div class="k" style="font-size:10px;color:var(--dim);text-transform:uppercase">Recent form</div>
+        <div class="form">${(s.form||'').split('').map(c=>`<i class="${c}">${c}</i>`).join('')}</div></div>
+        <div style="margin-left:auto;text-align:right">
+          <div style="font-size:10px;color:var(--dim);text-transform:uppercase">Window</div>
+          <div style="font-size:19px;font-weight:700">${s.n}<small style="font-size:11px;color:var(--dim)"> / 45</small></div>
+        </div>
+      </div>
+      <div class="hint">${s.hn} home · ${s.an} away${t.country?` · ${esc(t.country)}`:''}</div>
+    </div>
+
+    <div class="ttl">Results</div>
+    <div class="card"><div class="sg">
+      <div><div class="k">Win</div><div class="v">${pct(d(s.w))}<small>${s.w}</small></div></div>
+      <div><div class="k">Draw</div><div class="v">${pct(d(s.d))}<small>${s.d}</small></div></div>
+      <div><div class="k">Loss</div><div class="v">${pct(d(s.l))}<small>${s.l}</small></div></div>
+      <div><div class="k">First-half win</div><div class="v">${pct(d(s.h1w))}<small>${s.h1w}</small></div></div>
+      <div><div class="k">First-half draw</div><div class="v">${pct(d(s.h1d))}<small>${s.h1d}</small></div></div>
+      <div><div class="k">First-half loss</div><div class="v">${pct(d(s.h1l))}<small>${s.h1l}</small></div></div>
+    </div></div>
+
+    <div class="ttl">Goals</div>
+    <div class="card"><div class="sg">
+      <div><div class="k">Scored / game</div><div class="v">${(s.gf/s.n).toFixed(2)}</div></div>
+      <div><div class="k">Conceded / game</div><div class="v">${(s.ga/s.n).toFixed(2)}</div></div>
+      <div><div class="k">Scored at home</div><div class="v">${s.hgf.toFixed(2)}</div></div>
+      <div><div class="k">Scored away</div><div class="v">${s.agf.toFixed(2)}</div></div>
+      <div><div class="k">Conceded at home</div><div class="v">${s.hga.toFixed(2)}</div></div>
+      <div><div class="k">Conceded away</div><div class="v">${s.aga.toFixed(2)}</div></div>
+    </div></div>
+
+    <div class="ttl">Patterns</div>
+    <div class="card"><div class="sg">
+      <div><div class="k">Both teams scored</div><div class="v">${pct(d(s.btts))}<small>${s.btts}</small></div></div>
+      <div><div class="k">Clean sheets</div><div class="v">${pct(d(s.cs))}<small>${s.cs}</small></div></div>
+      <div><div class="k">Scored both halves</div><div class="v">${pct(d(s.sbh))}<small>${s.sbh}</small></div></div>
+      <div><div class="k">Failed to score</div><div class="v">${pct(d(s.fts))}<small>${s.fts}</small></div></div>
+      <div><div class="k">Over 2.5 goals</div><div class="v">${pct(d(s.o25))}<small>${s.o25}</small></div></div>
+      <div><div class="k">1st-half goals / game</div><div class="v">${(((s.h1gf*s.hn)+(s.a1gf*s.an))/s.n).toFixed(2)}</div></div>
+    </div></div>
+
+    <div class="ttl">Last ${Math.min(ms.length,15)} matches</div>
+    <div class="card">${ms.slice(0,15).map(m=>{
+      const res = m.gf>m.ga?'W':m.gf===m.ga?'D':'L';
+      return `<div class="sr">
+        <div class="form"><i class="${res}">${res}</i></div>
+        <div class="n">${m.h?'':'@ '}${esc(m.o)}</div>
+        <div class="c">${m.hgf}-${m.hga} HT</div>
+        <div class="c" style="color:var(--fg);font-weight:700;min-width:30px;text-align:right">${m.gf}-${m.ga}</div>
+      </div>`;
+    }).join('')}</div>
+  `);
+};
+
+/* ════════════════════════════════════════════════════════════
+   8.  TEAM SEARCH
+   ════════════════════════════════════════════════════════════ */
+function wireSearch(inputId, resultsId, onPick) {
+  const inp = document.getElementById(inputId), box = document.getElementById(resultsId);
+  let timer;
+  inp.addEventListener('input', () => {
+    clearTimeout(timer);
+    const v = inp.value.trim();
+    if (v.length < 2) { box.innerHTML=''; return; }
+    timer = setTimeout(async () => {
+      box.innerHTML = '<div class="skel" style="height:44px"></div>';
+      let res = [];
+      try { res = await searchTeams(v); } catch(e){ console.error(e); }
+      if (!res.length) { box.innerHTML = `<div class="empty" style="padding:22px">No team found. Search is case-insensitive and matches from the start of the name.</div>`; return; }
+      box.innerHTML = '<div class="card">' + res.map(t =>
+        `<div class="sr" data-id="${esc(t.id)}">
+           ${t.logo?`<img src="${esc(t.logo)}" loading="lazy" alt="">`:'<div style="width:22px"></div>'}
+           <div class="n">${esc(t.name)}</div>
+           <div class="c">${t.s&&t.s.n?t.s.n+' m':'—'}</div>
+         </div>`).join('') + '</div>';
+      box.querySelectorAll('.sr').forEach(r =>
+        r.onclick = () => onPick(r.dataset.id, res.find(x=>String(x.id)===r.dataset.id), inp, box));
+    }, 280);
+  });
+}
+wireSearch('tsearch','tresults',(id)=>window.__openTeam(id));
+
+/* ════════════════════════════════════════════════════════════
+   9.  CALCULATOR
+   ════════════════════════════════════════════════════════════ */
+function pickFor(side) {
+  return (id, team, inp, box) => {
+    S.calc[side] = { id, name: team.name, logo: team.logo, lid: team.lid };
+    inp.value = team.name;
+    box.innerHTML = '';
+    document.getElementById('cGo').disabled = !(S.calc.h && S.calc.a);
+  };
+}
+wireSearch('cHome','cHomeR', pickFor('h'));
+wireSearch('cAway','cAwayR', pickFor('a'));
+
+document.getElementById('cGo').onclick = async () => {
+  const out = document.getElementById('cOut');
+  out.innerHTML = '<div class="skel"></div><div class="skel"></div>';
+  const [th, ta] = await Promise.all([soft(getTeam(S.calc.h.id)), soft(getTeam(S.calc.a.id))]);
+  if (!th || !ta) { out.innerHTML = `<div class="empty"><b>Missing profile</b>One of these teams has no stored history.</div>`; return; }
+  const mh = unpack(th.m), ma = unpack(ta.m);
+  const H = mh.length ? PM.profile(mh) : th.s;
+  const A = ma.length ? PM.profile(ma) : ta.s;
+  if (!H||!A||!H.n||!A.n) { out.innerHTML = `<div class="empty"><b>Not enough matches</b>Both teams need stored results before the model can price this.</div>`; return; }
+
+  const lg = await soft(getLeagueStats(th.lid));
+  const r  = PM.run(H, A, lg ? lg.avg : null);
+
+  out.innerHTML = `
+    <div class="ttl">${esc(S.calc.h.name)} (H) v ${esc(S.calc.a.name)} (A)</div>
+    <div class="card" style="padding:12px">
+      <div class="pbar"><i class="h" style="width:${r.hw*100}%"></i><i class="d" style="width:${r.dr*100}%"></i><i class="a" style="width:${r.aw*100}%"></i></div>
+      <div class="pct" style="font-size:13px;margin-top:8px">
+        <span><b>1</b> ${pct1(r.hw)} <small style="color:var(--dim)">${odds(r.hw)}</small></span>
+        <span><b>X</b> ${pct1(r.dr)} <small style="color:var(--dim)">${odds(r.dr)}</small></span>
+        <span><b>2</b> ${pct1(r.aw)} <small style="color:var(--dim)">${odds(r.aw)}</small></span>
+      </div>
+      <div class="hint">xG ${r.lh.toFixed(2)} – ${r.la.toFixed(2)} · 1st half ${r.lh1.toFixed(2)} – ${r.la1.toFixed(2)}</div>
+    </div>
+    <div class="card"><div class="sg">
+      <div><div class="k">BTTS</div><div class="v">${pct(r.btts)}<small>${odds(r.btts)}</small></div></div>
+      <div><div class="k">Over 2.5</div><div class="v">${pct(r.o25)}<small>${odds(r.o25)}</small></div></div>
+      <div><div class="k">1st half 1</div><div class="v">${pct(r.h1w)}</div></div>
+      <div><div class="k">1st half X</div><div class="v">${pct(r.h1d)}</div></div>
+      <div><div class="k">Home clean sheet</div><div class="v">${pct(r.csH)}</div></div>
+      <div><div class="k">Away clean sheet</div><div class="v">${pct(r.csA)}</div></div>
+    </div></div>
+    <div class="ttl">Most likely scores</div>
+    <div class="card"><div class="sg" style="grid-template-columns:repeat(3,1fr)">
+      ${r.top.map(s=>`<div><div class="k">${s.s}</div><div class="v">${pct1(s.p)}</div></div>`).join('')}
+    </div></div>
+    <div class="ttl">Profiles</div>
+    <div class="card">${compare(H, A, S.calc.h.name, S.calc.a.name)}</div>
+    <div class="note">This treats ${esc(S.calc.h.name)} as the home side regardless of any real fixture. Swap the inputs to price the reverse.</div>`;
+};
+
+/* ════════════════════════════════════════════════════════════
+   10.  ALGORITHMS TAB
+   ════════════════════════════════════════════════════════════ */
+function renderAlgoList() {
+  const box = document.getElementById('algoList');
+  box.innerHTML = ALGOS.map(a => `
+    <div class="card" style="padding:13px">
+      <div style="display:flex;align-items:center;gap:9px">
+        <div style="font-weight:800;font-size:16px;flex:1">${esc(a.name)}</div>
+        ${a.needsOdds ? '<span class="pill" style="margin:0">needs odds</span>' : ''}
+      </div>
+      <div style="font-size:12px;color:var(--dim);line-height:1.6;margin-top:7px">${esc(a.blurb)}</div>
+      <button class="btn" data-algo="${esc(a.id)}">Run ${esc(a.name)}</button>
+      ${a.tracked ? `<button class="btn alt" data-hist="${esc(a.id)}">Results so far</button>` : ''}
+    </div>`).join('');
+
+  box.querySelectorAll('button[data-algo]').forEach(b =>
+    b.onclick = () => runAlgo(b.dataset.algo));
+  box.querySelectorAll('button[data-hist]').forEach(b =>
+    b.onclick = () => runHistory(b.dataset.hist));
+}
+
+/* ════════════════════════════════════════════════════════════════
+   The ledger.
+
+   The picks job writes down each day's selections before kick-off and
+   grades them once results arrive. Nothing is computed here — showing a
+   win rate recalculated in the browser would defeat the point, because
+   the model can change and the stored record cannot. This only reads.
+   ════════════════════════════════════════════════════════════════ */
+async function runHistory(id) {
+  const out = document.getElementById('algoOut');
+  const algo = ALGOS.find(a => a.id === id);
+  if (!algo || !dbOK) return;
+  out.innerHTML = `<div class="skel"></div><div class="skel"></div>`;
+
+  let totals = null, days = [];
+  try {
+    const meta = await getDoc(doc(db, 'meta', 'picks'));
+    if (meta.exists()) {
+      const t = meta.data().totals;
+      totals = typeof t === 'string' ? JSON.parse(t) : t;
+    }
+    /* documentId(), not the string '__name__' — the web SDK rejects field
+       paths wrapped in double underscores as reserved. Document ids are
+       the dates, so ordering by id descending is newest first. */
+    const snap = await getDocs(query(collection(db, 'picks'), orderBy(documentId(), 'desc'), limit(14)));
+    snap.forEach(d => {
+      const v = d.data() || {};
+      days.push({ date: d.id, sel: unpack(v.flipx2),
+                  won: v.won ?? null, lost: v.lost ?? null, pnl: v.pnl ?? null });
+    });
+  } catch (e) {
+    out.innerHTML = `<div class="empty"><b>Could not read the ledger</b>${esc(e.message)}</div>`;
+    return;
+  }
+
+  if (!totals || !totals.settled) {
+    out.innerHTML = `<div class="empty"><b>Nothing settled yet</b>
+      ${totals && totals.open ? `${totals.open} selection${totals.open === 1 ? '' : 's'} recorded and waiting on results. ` : ''}
+      The ledger fills in as matches finish — a day's selections are written before kick-off and
+      graded afterwards, so the first numbers appear once today's games are over.</div>`;
+    return;
+  }
+
+  const wr   = totals.winRate;
+  const roi  = totals.roi;
+  const sign = n => (n >= 0 ? '+' : '') + n.toFixed(2);
+  const cls  = n => n > 0 ? 'pos' : n < 0 ? 'neg' : 'flat';
+
+  out.innerHTML = `
+    <div class="ttl">${esc(algo.name)} — results so far</div>
+    <div class="card" style="padding:14px">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <div style="font-size:30px;font-weight:800;color:var(--acc);font-variant-numeric:tabular-nums">${pct1(wr)}</div>
+        <div style="font-size:13px;color:var(--dim)">win rate · ${totals.won}W ${totals.lost}L over ${totals.settled} settled</div>
+      </div>
+      <div class="sg" style="margin-top:12px">
+        <div><div class="k">Profit at 1 unit a bet</div>
+             <div class="v ${cls(totals.pnl)}">${sign(totals.pnl)}<small>units</small></div></div>
+        <div><div class="k">Return per bet</div>
+             <div class="v ${cls(roi)}">${(roi*100).toFixed(1)}%</div></div>
+        <div><div class="k">Still open</div><div class="v">${totals.open}</div></div>
+        <div><div class="k">Days recorded</div><div class="v">${totals.days}</div></div>
+      </div>
+      <div class="hint">A selection is recorded before kick-off at the price that was available then,
+        and graded on the final score. Profit counts one unit staked per selection.</div>
+    </div>
+
+    <div class="ttl">By day</div>
+    <div class="card">
+      ${days.filter(d => d.sel.length).map(d => {
+        const settled = d.sel.filter(s => s.won === true || s.won === false);
+        const w = settled.filter(s => s.won).length;
+        return `<div class="cmp">
+          <div class="row" style="gap:10px">
+            <div style="width:88px;font-size:12px;color:var(--dim)">${esc(d.date)}</div>
+            <div style="flex:1;font-size:12px">
+              ${settled.length ? `${w}/${settled.length} won` : `${d.sel.length} waiting`}
+            </div>
+            ${d.pnl != null && settled.length
+              ? `<div class="val ${cls(d.pnl)}">${sign(d.pnl)}</div>` : '<div class="val flat">—</div>'}
+          </div></div>`;
+      }).join('') || '<div class="hint" style="padding:12px">No days recorded yet.</div>'}
+    </div>
+
+    <div class="ttl">Last settled selections</div>
+    <div class="card">
+      ${days.flatMap(d => d.sel.filter(s => s.won === true || s.won === false)
+          .map(s => ({ ...s, date: d.date }))).slice(0, 20).map(s => `
+        <div class="cmp"><div class="row" style="gap:10px">
+          <div style="flex:1">
+            <div style="font-size:13px">${esc(s.home)} v ${esc(s.away)}</div>
+            <div style="font-size:11px;color:var(--dim)">${esc(s.date)} · ${esc(s.lname || '')} · ${esc(s.label)} @ ${s.price.toFixed(2)} · model ${pct(s.p)}</div>
+          </div>
+          <div style="font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums">${s.gh ?? '?'}–${s.ga ?? '?'}</div>
+          <div class="val ${s.won ? 'pos' : 'neg'}">${s.won ? '+' + (s.price - 1).toFixed(2) : '−1.00'}</div>
+        </div></div>`).join('') || '<div class="hint" style="padding:12px">Nothing graded yet.</div>'}
+    </div>
+
+    <div class="note">This is a record of what the strategy chose, not of bets placed. It assumes you
+      could take the recorded price on every selection, which in practice you cannot always do —
+      so treat it as the optimistic end of what the strategy would have returned.</div>`;
+}
+
+/* Scans today and the next three days — the forward half of the
+   retention window — rather than only the date shown on the matches
+   tab, because a strategy wants the whole upcoming card. */
+async function runAlgo(id) {
+  const algo = ALGOS.find(a => a.id === id);
+  const out = document.getElementById('algoOut');
+  if (!algo) return;
+  if (!dbOK) { out.innerHTML = `<div class="empty"><b>Firebase not configured</b></div>`; return; }
+
+  out.innerHTML = `<div class="note">Scanning the next four days…</div><div class="skel"></div><div class="skel"></div>`;
+
+  const dates = [0, 1, 2, 3].map(n => shiftDay(todayISO(), n));
+  const items = [];
+  let scanned = 0, noStats = 0, noOdds = 0;
+
+  for (const date of dates) {
+    let fx = [];
+    try { fx = (await getDayFixtures(date)) || []; } catch { continue; }
+    const odds = await soft(getOdds(date));
+    const pending = fx.filter(f => !FINISHED.has(f.st) && !LIVE.has(f.st));
+    scanned += pending.length;
+
+    const priced = await Promise.all(pending.map(async f => {
+      try {
+        const { H, A, avg } = await statsFor(f);
+        if (!H || !A || H.n < MIN_MATCHES || A.n < MIN_MATCHES) return { skip: true };
+        const r = PM.run(H, A, avg);
+        return { f: { ...f, date }, r, v: valueOf(r, oddsFor(odds, f)) };
+      } catch { return { skip: true }; }
+    }));
+
+    for (const x of priced) {
+      if (x.skip) { noStats++; continue; }
+      if (algo.needsOdds && !x.v) { noOdds++; continue; }
+      items.push(x);
+    }
+  }
+
+  if (!items.length) {
+    out.innerHTML = `<div class="empty"><b>Nothing to work with</b>
+      Scanned ${scanned} upcoming match${scanned === 1 ? '' : 'es'}.
+      ${noStats ? `${noStats} had no team history. ` : ''}
+      ${noOdds ? `${noOdds} had no bookmaker price stored — run the odds function and check these leagues are in its sweep list.` : ''}</div>`;
+    return;
+  }
+
+  const picks = algo.run(items, algo.params);
+  if (!picks.length) {
+    /* Each strategy states its own conditions. This used to read Flip x2's
+       band and target directly, which threw the moment a second algorithm
+       without those params was added. */
+    const need = typeof algo.requirement === 'function'
+      ? algo.requirement(algo.params) : 'No match met its conditions.';
+    out.innerHTML = `<div class="empty"><b>No selection fits</b>
+      ${items.length} match${items.length === 1 ? '' : 'es'} priced, but none met this strategy's conditions.
+      ${esc(need)}</div>`;
+    return;
+  }
+
+  const top  = picks[0];
+  const rest = picks.slice(1, 15);
+  const dayOf = x => new Date(x.f.date + 'T12:00:00Z')
+    .toLocaleDateString(undefined, { weekday:'short', day:'numeric', month:'short', timeZone:'UTC' });
+  const timeOf = x => x.f.ts
+    ? new Date(x.f.ts*1000).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}) : '';
+
+  const r0 = algo.render(top);
+  out.innerHTML = `
+    <div class="ttl">${esc(algo.name)} — top selection</div>
+    <div class="card" style="padding:14px">
+      <div class="lgline">${esc(top.f.ctry||'')}${top.f.ctry&&top.f.lname?' · ':''}${esc(top.f.lname||'')} · ${dayOf(top)} ${timeOf(top)}</div>
+      <div style="font-size:16px;font-weight:700;margin:2px 0 9px">${esc(top.f.hname)} v ${esc(top.f.aname)}</div>
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <div style="background:var(--acc);color:#04231b;border-radius:6px;padding:4px 10px;font-weight:800">${esc(r0.pick)}</div>
+        <div style="font-size:22px;font-weight:800;color:var(--acc);font-variant-numeric:tabular-nums">${r0.headline}</div>
+      </div>
+      <div class="hint">${esc(r0.sub)}</div>
+    </div>
+
+    ${rest.length ? `<div class="ttl">Next ${rest.length} by the same rule</div>
+    <div class="card">
+      ${rest.map(x => {
+        const rr = algo.render(x);
+        return `<div class="sr" style="align-items:flex-start">
+          <div class="n">
+            <div style="font-size:13px">${esc(x.f.hname)} v ${esc(x.f.aname)}</div>
+            <div class="lgline" style="margin:3px 0 0">${esc(x.f.lname||'')} · ${dayOf(x)}</div>
+          </div>
+          <div style="text-align:right;flex:0 0 auto">
+            <div style="font-size:12px;font-weight:700">${esc(rr.pick)}</div>
+            <div style="font-size:12px;color:var(--acc);font-weight:700;font-variant-numeric:tabular-nums">${rr.headline}</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>` : ''}
+
+    <div class="note">Scanned ${scanned} upcoming matches across four days; ${items.length} had both a model price and a bookmaker price; ${picks.length} met the rule.${
+      noOdds ? ` ${noOdds} were skipped for having no stored price.` : ''}</div>
+    <div class="note"><b style="color:var(--warn)">Read this before betting it.</b> The model prices goals and shots. It does not see team news, injuries, suspensions, motivation or rotation — all of which the bookmaker does see, and prices in before taking a margin on top. A selection sitting clear of break-even usually means the market knows something the model cannot. Treat this as a shortlist to investigate, not as a tip.</div>`;
+}
+
+/* ════════════════════════════════════════════════════════════
+   11.  NAV + BOOT
+   ════════════════════════════════════════════════════════════ */
+/* ---- team search ---- */
+{
+  const inp = document.getElementById('msearch');
+  let t;
+  inp.addEventListener('input', () => {
+    clearTimeout(t);
+    t = setTimeout(() => { S.query = inp.value; renderFixtures(); }, 220);
+  });
+}
+
+/* ---- bookmaker coverage ----
+   The league list lives in Firestore at config/leagues so it can be
+   edited without redeploying. If the document is missing the toggle
+   hides itself rather than filtering everything away. */
+async function loadBookLeagues() {
+  const wrap = document.getElementById('bookWrap');
+  if (!dbOK) { wrap.style.display = 'none'; return; }
+  try {
+    const d = await getDoc(doc(db, 'config', 'leagues'));
+    const ids = d.exists() ? (d.data().ids || []) : null;
+    if (!ids || !ids.length) { wrap.style.display = 'none'; return; }
+    S.bookLeagues = new Set(ids.map(String));
+    document.getElementById('bookCount').textContent = `${ids.length} leagues`;
+    try { S.bookOnly = localStorage.getItem('gp_bookonly') === '1'; } catch {}
+    document.getElementById('bookOnly').checked = S.bookOnly;
+  } catch { wrap.style.display = 'none'; }
+}
+document.getElementById('bookOnly').onchange = e => {
+  S.bookOnly = e.target.checked;
+  try { localStorage.setItem('gp_bookonly', S.bookOnly ? '1' : '0'); } catch {}
+  renderFixtures();
+};
+
+document.querySelectorAll('#sortSeg button').forEach(b => b.onclick = () => {
+  if (S.sort === b.dataset.s) return;
+  S.sort = b.dataset.s;
+  document.querySelectorAll('#sortSeg button').forEach(x => x.classList.toggle('on', x === b));
+  renderFixtures();
+});
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+  document.getElementById('v-'+b.dataset.v).classList.add('on');
+  document.querySelector('header .dates').style.display = b.dataset.v==='matches' ? 'flex' : 'none';
+  if (b.dataset.v === 'info') loadMeta();
+  if (b.dataset.v === 'algo') renderAlgoList();
+  window.scrollTo(0,0);
+});
+
+async function loadMeta() {
+  const el = document.getElementById('meta');
+  if (!dbOK) { el.textContent = 'Firebase not configured.'; return; }
+  try {
+    const d = await getDoc(doc(db,'meta','sync'));
+    if (!d.exists()) { el.textContent = 'No sync record yet — the ingest job has not run.'; return; }
+    const v = d.data();
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr auto;gap:7px 12px">
+        <span>Last fixtures pull</span><b style="color:var(--fg)">${esc(v.lastPull||'—')}</b>
+        <span>Last results digest</span><b style="color:var(--fg)">${esc(v.lastDigest||'—')}</b>
+        <span>Teams tracked</span><b style="color:var(--fg)">${v.teamCount ?? '—'}</b>
+        <span>Matches ingested</span><b style="color:var(--fg)">${v.matchCount ?? '—'}</b>
+        <span>Pending queue</span><b style="color:var(--fg)">${v.pending ?? '—'}</b>
+        <span>API calls today</span><b style="color:var(--fg)">${v.apiToday ?? '—'} / 100</b>
+      </div>`;
+  } catch { el.textContent = 'Could not read sync metadata.'; }
+}
+
+renderDates();
+loadBookLeagues().then(renderFixtures);
+</script>
+</body>
+</html>
