@@ -178,7 +178,7 @@ export default async function odds(D, env, url) {
       month, used,
       remaining,
       lastSweep: new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC',
-      region: REGION, market: MARKET
+      region: REGION, markets: `${MARKET_MAIN} (+${MARKET_TOTAL} on top ${FULL_MARKETS})`
     }, { merge: true });
 
     return ok({
