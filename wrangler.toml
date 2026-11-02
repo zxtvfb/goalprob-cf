@@ -21,14 +21,26 @@ binding = "ASSETS"
 [triggers]
 crons = ["0 * * * *", "20 * * * *", "40 6 * * *"]
 
-# Secrets are NOT set here — they would end up in git.
-# Set each one with:  npx wrangler secret put NAME
-#   FIREBASE_PROJECT_ID
+# Plain variables live here, and ONLY here.
+#
+# A deploy replaces the Worker's plaintext variables with whatever this
+# file lists. Anything added in the dashboard as type "Text" and not
+# repeated here is wiped on the next deploy — which is why the secrets
+# kept disappearing. The project id is not sensitive (it already appears
+# in index.html), so it is safe to keep in git and is pinned here.
+[vars]
+FIREBASE_PROJECT_ID = "zxtvfb-bb48a"
+
+# The remaining four must be added in the dashboard with type SECRET,
+# not Text. Secrets are stored separately and survive every deploy:
+#
 #   FIREBASE_CLIENT_EMAIL
 #   FIREBASE_PRIVATE_KEY
 #   APIFOOTBALL_KEY
 #   ODDS_API_KEY      (optional — odds and Flip x2 need it)
 #   ADMIN_KEY         (optional — closes the /jobs/ URLs)
+#
+# Dashboard → Settings → Variables and Secrets → Add → Type: Secret.
 
 [observability]
 enabled = true
