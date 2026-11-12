@@ -1,0 +1,67 @@
+# This MUST match the Worker name in the Cloudflare dashboard. If it does
+# not, a deploy targets a different Worker than the one holding your
+# secrets, and every run reports the secrets as missing.
+name = "goalprob-cf"
+main = "src/index.mjs"
+compatibility_date = "2026-10-01"
+
+# Serves index.html. Requests to static assets are free and do not
+# count against the 100,000 daily request limit on the free plan.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Cron triggers. A Worker receives every cron through one scheduled()
+# handler, so src/index.mjs picks the job by the minute it fires on:
+#   :00        pull     fetch fixtures       up to 3 API-Football calls
+#   :10        rekey    repair odds keys     no API calls
+#   :20        digest   build team records   no API calls
+#   :30        history  refresh this season's results from football-data,
+#                       one league slice an hour — the only source of
+#                       shots and dependable half-time scores
+#   :36        picks    record + settle the Flip x2 and HTD ledger, no API calls
+#   :40,45,50,55  odds  bookmaker prices     ~15 Odds API credits in total
+#                       (06:xx UTC only — 10:40 in Mauritius)
+#   every 2 min  algos  Flip x2 and HTD for today, tomorrow and the day
+#                       after, saved for the app; one slice per run, a
+#                       full pass about every 90 minutes. No API calls.
+#                       At :30 this trigger runs pull instead, so today's
+#                       results arrive every half hour, and at :36 picks.
+#
+# rekey runs ten minutes after pull on purpose. pull rewrites a whole
+# day's chunk, so if it ever stores fixtures without the price-lookup key
+# the repair happens on its own rather than waiting to be spotted.
+#
+# The odds sweep does three leagues per invocation and resumes from a
+# stored cursor. Four firings five minutes apart complete one full cycle
+# each day. A minute LIST is one cron expression, not several, so the
+# whole schedule uses four trigger slots — one spare under the free
+# plan's five. The every-two-minutes trigger is told apart by its
+# expression, which must stay exactly "*/2 * * * *" (src/index.mjs looks
+# for it); it also carries picks at :36 and a second pull at :30.
+[triggers]
+crons = ["0,10 * * * *", "20,30 * * * *", "40,45,50,55 6 * * *", "*/2 * * * *"]
+
+# Plain variables live here, and ONLY here.
+#
+# A deploy replaces the Worker's plaintext variables with whatever this
+# file lists. Anything added in the dashboard as type "Text" and not
+# repeated here is wiped on the next deploy — which is why the secrets
+# kept disappearing. The project id is not sensitive (it already appears
+# in index.html), so it is safe to keep in git and is pinned here.
+[vars]
+FIREBASE_PROJECT_ID = "zxtvfb-bb48a"
+
+# The remaining four must be added in the dashboard with type SECRET,
+# not Text. Secrets are stored separately and survive every deploy:
+#
+#   FIREBASE_CLIENT_EMAIL
+#   FIREBASE_PRIVATE_KEY
+#   APIFOOTBALL_KEY
+#   ODDS_API_KEY      (optional — odds and Flip x2 need it)
+#   ADMIN_KEY         (optional — closes the /jobs/ URLs)
+#
+# Dashboard → Settings → Variables and Secrets → Add → Type: Secret.
+
+[observability]
+enabled = true
