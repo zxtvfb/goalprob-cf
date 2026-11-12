@@ -1,0 +1,1954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GoalProb — Football Probability Engine</title>
+<style>
+  :root{
+    --bg:#0b0f14; --bg2:#121820; --bg3:#1a222d; --line:#232d3a;
+    --fg:#e8eef5; --mut:#8b9bb0; --dim:#5d6b7e;
+    --acc:#2dd4a7; --acc2:#39b0ff; --warn:#f5a524; --bad:#f4525f;
+    --home:#39b0ff; --draw:#8b9bb0; --away:#f5a524;
+    --r:12px; --rs:8px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--fg);
+    font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding-bottom:84px; overscroll-behavior-y:none;
+  }
+  .wrap{max-width:720px;margin:0 auto;padding:0 12px}
+
+  /* ---------- header ---------- */
+  header{
+    position:sticky;top:0;z-index:40;background:rgba(11,15,20,.93);
+    backdrop-filter:blur(12px);border-bottom:1px solid var(--line);
+    padding-top:env(safe-area-inset-top);
+  }
+  .hd{display:flex;align-items:center;gap:10px;padding:12px 0 10px}
+  .logo{font-weight:800;letter-spacing:-.4px;font-size:18px}
+  .logo span{color:var(--acc)}
+  .pill{
+    margin-left:auto;font-size:11px;color:var(--mut);background:var(--bg3);
+    border:1px solid var(--line);border-radius:99px;padding:4px 10px;white-space:nowrap
+  }
+  .pill.ok{color:var(--acc);border-color:#1d4a3e}
+  .pill.err{color:var(--bad);border-color:#4a2026}
+
+  /* date strip */
+  .dates{display:flex;gap:6px;overflow-x:auto;padding:0 0 10px;scrollbar-width:none}
+  .dates::-webkit-scrollbar{display:none}
+  .dchip{
+    flex:0 0 auto;min-width:58px;text-align:center;padding:7px 10px;border-radius:var(--rs);
+    background:var(--bg2);border:1px solid var(--line);cursor:pointer;line-height:1.25
+  }
+  .dchip b{display:block;font-size:14px}
+  .dchip i{display:block;font-size:10px;color:var(--dim);font-style:normal;text-transform:uppercase;letter-spacing:.5px}
+  .dchip.on{background:var(--acc);border-color:var(--acc);color:#04231b}
+  .dchip.on i{color:#04231b;opacity:.72}
+
+  /* ---------- generic ---------- */
+  .card{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);margin:10px 0;overflow:hidden}
+  .lg-hd{
+    display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:var(--bg3);border-bottom:1px solid var(--line);cursor:pointer
+  }
+  .lg-hd img{width:16px;height:16px;object-fit:contain;border-radius:2px;flex:0 0 auto}
+  .lg-hd .nm{font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lg-hd .ct{font-size:11px;color:var(--dim);white-space:nowrap}
+  .lg-hd .cnt{margin-left:auto;font-size:11px;color:var(--dim)}
+
+  .mx{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+  .mx:last-child{border-bottom:0}
+  .mx:active{background:var(--bg3)}
+  .mx .tm{flex:1;min-width:0}
+  .mx .tr{display:flex;align-items:center;gap:7px;padding:1px 0}
+  .mx .tr img{width:17px;height:17px;object-fit:contain;flex:0 0 auto}
+  .mx .tr span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+  .mx .sc{font-size:14px;font-weight:700;width:18px;text-align:right;flex:0 0 auto;color:var(--mut)}
+  .mx .sc.hi{color:var(--fg)}
+  .mx .meta{flex:0 0 auto;text-align:right;min-width:46px}
+  .mx .tt{font-size:12px;color:var(--mut);font-variant-numeric:tabular-nums}
+  .mx .live{font-size:11px;color:var(--bad);font-weight:700}
+  .mx .ft{font-size:10px;color:var(--dim)}
+
+  /* probability bar */
+  .pbar{display:flex;height:5px;border-radius:3px;overflow:hidden;background:var(--bg3);margin-top:7px}
+  .pbar i{display:block;height:100%}
+  .pbar .h{background:var(--home)} .pbar .d{background:var(--draw)} .pbar .a{background:var(--away)}
+  .pct{display:flex;gap:10px;margin-top:5px;font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+  .pct b{color:var(--mut);font-weight:600}
+  .pct .q{margin-left:auto}
+
+  /* ---------- nav ---------- */
+  nav{
+    position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;
+    background:rgba(18,24,32,.96);backdrop-filter:blur(12px);border-top:1px solid var(--line);
+    padding-bottom:env(safe-area-inset-bottom)
+  }
+  nav button{
+    flex:1;background:0;border:0;color:var(--dim);font:inherit;font-size:10px;
+    padding:9px 0 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px
+  }
+  nav button svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  nav button.on{color:var(--acc)}
+
+  /* ---------- views ---------- */
+  .view{display:none} .view.on{display:block}
+  .ttl{font-size:12px;text-transform:uppercase;letter-spacing:1.1px;color:var(--dim);margin:16px 2px 8px;font-weight:700}
+  .empty{text-align:center;color:var(--dim);padding:44px 20px;font-size:14px;line-height:1.6}
+  .empty b{display:block;color:var(--mut);font-size:15px;margin-bottom:6px}
+
+  input,select{
+    width:100%;background:var(--bg2);border:1px solid var(--line);color:var(--fg);
+    border-radius:var(--rs);padding:11px 12px;font:inherit;outline:0
+  }
+  input:focus,select:focus{border-color:var(--acc)}
+  select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),linear-gradient(135deg,var(--dim) 50%,transparent 50%);
+    background-position:calc(100% - 16px) 50%,calc(100% - 11px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:34px}
+
+  .btn{
+    width:100%;background:var(--acc);color:#04231b;border:0;border-radius:var(--rs);
+    padding:12px;font:inherit;font-weight:700;cursor:pointer;margin-top:10px
+  }
+  .btn:disabled{opacity:.4}
+  .btn.alt{background:var(--bg3);color:var(--fg);border:1px solid var(--line)}
+
+  /* stat grid */
+  .sg{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line)}
+  .sg>div{background:var(--bg2);padding:10px 12px}
+  .sg .k{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px}
+  .sg .v{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+  .sg .v small{font-size:11px;color:var(--dim);font-weight:500;margin-left:3px}
+
+  /* comparison rows */
+  .cmp{padding:10px 12px;border-bottom:1px solid var(--line)}
+  .cmp:last-child{border-bottom:0}
+  .cmp .lbl{font-size:11px;color:var(--dim);text-align:center;text-transform:uppercase;letter-spacing:.5px}
+  .cmp .row{display:flex;align-items:center;gap:8px;margin-top:4px}
+  .cmp .n{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;width:50px}
+  .cmp .n.r{text-align:right}
+  .cmp .trk{flex:1;display:flex;gap:3px;height:6px}
+  .cmp .trk i{display:block;height:100%;border-radius:3px;background:var(--bg3)}
+  .cmp .trk i.f{background:var(--home)} .cmp .trk i.g{background:var(--away)}
+  .cmp .trk .l{display:flex;justify-content:flex-end;flex:1}
+  .cmp .trk .r2{display:flex;flex:1}
+
+  .form{display:flex;gap:3px;margin-top:6px}
+  .form i{
+    width:17px;height:17px;border-radius:4px;font-size:10px;font-weight:700;font-style:normal;
+    display:flex;align-items:center;justify-content:center;color:#04231b
+  }
+  .form i.W{background:var(--acc)} .form i.D{background:var(--draw)} .form i.L{background:var(--bad);color:#fff}
+
+  /* modal */
+  .ov{position:fixed;inset:0;z-index:60;background:rgba(5,8,11,.72);backdrop-filter:blur(3px);display:none}
+  .ov.on{display:block}
+  .sheet{
+    position:absolute;left:0;right:0;bottom:0;max-height:90vh;overflow-y:auto;
+    background:var(--bg);border-radius:18px 18px 0 0;border-top:1px solid var(--line);
+    padding:0 12px calc(26px + env(safe-area-inset-bottom));
+    animation:up .22s cubic-bezier(.3,.8,.4,1)
+  }
+  @keyframes up{from{transform:translateY(22px);opacity:.4}}
+  .grab{width:36px;height:4px;background:var(--line);border-radius:2px;margin:9px auto 4px}
+  .sh-hd{display:flex;align-items:center;gap:10px;padding:8px 2px 12px;position:sticky;top:0;background:var(--bg);z-index:2}
+  .sh-hd .t{font-weight:700;font-size:16px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .x{background:var(--bg3);border:1px solid var(--line);color:var(--mut);border-radius:99px;width:30px;height:30px;font-size:17px;line-height:1;cursor:pointer;flex:0 0 auto}
+
+  .sr{display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+  .sr:last-child{border-bottom:0}
+  .sr img{width:22px;height:22px;object-fit:contain;flex:0 0 auto}
+  .sr .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+  .sr .c{font-size:11px;color:var(--dim);flex:0 0 auto}
+
+  /* segmented filter */
+  .seg{display:flex;gap:4px;background:var(--bg2);border:1px solid var(--line);
+       border-radius:var(--rs);padding:3px;margin:10px 0}
+  .seg button{flex:1;background:0;border:0;color:var(--mut);font:inherit;font-size:12px;
+       font-weight:600;padding:8px 6px;border-radius:6px;cursor:pointer;white-space:nowrap}
+  .seg button.on{background:var(--acc);color:#04231b}
+
+  /* headline pick */
+  .pick{display:flex;align-items:center;gap:6px;margin-top:7px;font-size:12px}
+  .pick .tag{background:var(--bg3);border:1px solid var(--line);border-radius:5px;
+       padding:2px 7px;font-weight:700;color:var(--fg);white-space:nowrap}
+  .pick .pp{font-weight:700;font-variant-numeric:tabular-nums;color:var(--acc)}
+  .pick .eg{font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums}
+  .pick.hot .tag{border-color:#1d4a3e;color:var(--acc)}
+  .lgline{font-size:10px;color:var(--dim);margin-bottom:4px;overflow:hidden;
+       text-overflow:ellipsis;white-space:nowrap}
+
+  /* bookmaker-coverage toggle */
+  .chk{display:flex;align-items:center;gap:9px;padding:9px 11px;margin:8px 0;
+       background:var(--bg2);border:1px solid var(--line);border-radius:var(--rs);
+       font-size:12px;color:var(--mut);cursor:pointer}
+  .chk input{width:auto;flex:0 0 auto;accent-color:var(--acc);margin:0}
+  .chk span{flex:1}
+  .chk em{font-style:normal;font-size:11px;color:var(--dim)}
+
+  /* market comparison */
+  .mkt{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:11px;
+       color:var(--dim);font-variant-numeric:tabular-nums;flex-wrap:wrap}
+  .mkt b{color:var(--mut);font-weight:600}
+  .val{font-weight:700;border-radius:4px;padding:1px 6px;white-space:nowrap}
+  .val.pos{background:#10352b;color:var(--acc)}
+  .val.neg{background:#2a1a1d;color:var(--bad)}
+  .val.flat{background:var(--bg3);color:var(--dim)}
+
+  .note{font-size:12px;color:var(--dim);line-height:1.55;padding:10px 12px;background:var(--bg2);border:1px solid var(--line);border-radius:var(--rs);margin:10px 0}
+  .skel{height:60px;background:linear-gradient(90deg,var(--bg2),var(--bg3),var(--bg2));background-size:200% 100%;animation:sk 1.2s infinite;border-radius:var(--r);margin:10px 0}
+  @keyframes sk{to{background-position:-200% 0}}
+  .hint{font-size:11px;color:var(--dim);margin-top:6px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="hd">
+      <div class="logo">Goal<span>Prob</span></div>
+      <div class="pill" id="status">connecting…</div>
+    </div>
+    <div class="dates" id="dates"></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- ============ MATCHES ============ -->
+  <section class="view on" id="v-matches">
+    <input id="msearch" placeholder="Search a team…" autocomplete="off" style="margin:10px 0 0">
+    <div class="seg" id="sortSeg">
+      <button class="on" data-s="league">By league</button>
+      <button data-s="conf">By confidence</button>
+      <button data-s="edge">By value</button>
+    </div>
+    <label class="chk" id="bookWrap">
+      <input type="checkbox" id="bookOnly">
+      <span>Only leagues my bookmaker covers</span>
+      <em id="bookCount"></em>
+    </label>
+    <div id="fixtures"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+  </section>
+
+  <!-- ============ TEAMS ============ -->
+  <section class="view" id="v-teams">
+    <div class="ttl">Team profiles</div>
+    <input id="tsearch" placeholder="Search a team…" autocomplete="off">
+    <div class="hint">Profiles are built from each team's last 45 matches.</div>
+    <div id="tresults"></div>
+  </section>
+
+  <!-- ============ CALCULATOR ============ -->
+  <section class="view" id="v-calc">
+    <div class="ttl">Head-to-head calculator</div>
+    <div class="card" style="padding:12px">
+      <div style="font-size:11px;color:var(--dim);margin-bottom:5px">HOME TEAM</div>
+      <input id="cHome" placeholder="Search home team…" autocomplete="off">
+      <div id="cHomeR"></div>
+      <div style="font-size:11px;color:var(--dim);margin:12px 0 5px">AWAY TEAM</div>
+      <input id="cAway" placeholder="Search away team…" autocomplete="off">
+      <div id="cAwayR"></div>
+      <button class="btn" id="cGo" disabled>Calculate probability</button>
+    </div>
+    <div id="cOut"></div>
+  </section>
+
+  <!-- ============ ALGORITHMS ============ -->
+  <section class="view" id="v-algo">
+    <div class="ttl">Strategies</div>
+    <div id="algoList"></div>
+    <div id="algoOut"></div>
+  </section>
+
+  <!-- ============ ABOUT ============ -->
+  <section class="view" id="v-info">
+    <div class="ttl">How the forecast is made</div>
+    <div class="card" style="padding:14px;font-size:13px;line-height:1.65;color:var(--mut)">
+      <p style="margin:0 0 10px"><b style="color:var(--fg)">1 · Team profile.</b> Every team keeps its last 45 matches. From those come goals and shots on target, for and against, split by home and away. Recent matches count for more: a result fifteen matches back carries half the weight of the latest one, because a side from four months ago is a different side.</p>
+      <p style="margin:0 0 10px"><b style="color:var(--fg)">2 · Strength.</b> Each rate is set against its league average. Goals are few and noisy, so where shots on target are on record most of the weight goes on those instead. A team with few matches is pulled toward the league average so that five games cannot produce a wild number.</p>
+      <p style="margin:0 0 10px"><b style="color:var(--fg)">2b · Ratings from closing prices.</b> In the twenty leagues the results files cover, every match comes with the odds it closed at. Fitted across the whole league, those odds give each side a rating for quality and for how open its games are — and, because each team is measured against the opponents it actually faced, a fixture list of weak sides does not flatter it. Where both sides have a rating it carries most of the weight: tested on simulated seasons, it cut the error of the forecast almost in half.</p>
+      <p style="margin:0 0 10px"><b style="color:var(--fg)">3 · Scorelines.</b> The two expected-goal figures fill a grid of every score from 0–0 to 8–8, with a correction for the low scores a plain Poisson grid gets wrong. Summing cells gives 1X2, both-score, over/under, correct score. The first half gets its own grid.</p>
+      <p style="margin:0 0 10px"><b style="color:var(--fg)">4 · Checked against results.</b> The <b>/backtest</b> page replays the stored seasons, compares what the model said with what happened, and stores a correction for each market. Those corrections are applied here.</p>
+      <p style="margin:0 0 10px"><b style="color:var(--fg)">5 · The market.</b> Where bookmaker prices exist, the forecast is mostly the market's own probability with the margin removed — measured against known outcomes, a liquid market is several times more accurate than any model built on results. The model fills in what the bookmakers do not quote, the half-time result above all, using the expected goals their prices imply.</p>
+      <p style="margin:0 0 10px"><b style="color:var(--fg)">6 · Value.</b> A price is judged against the market, not against the model: the figure beside a price is what it returns per unit if the sharpest available probability is right. Plus means 1xBet is paying more than the bet is worth.</p>
+      <p style="margin:0"><b style="color:var(--warn)">What it does not see.</b> Team news of any kind — injuries, suspensions, line-ups, a change of manager — and the weather. Where a price exists the market has already taken those into account; where there is none, the number is built from results alone.</p>
+    </div>
+    <div class="ttl">Data</div>
+    <div class="card" style="padding:14px;font-size:13px;line-height:1.65;color:var(--mut)" id="meta"></div>
+  </section>
+
+</div>
+
+<nav>
+  <button class="on" data-v="matches">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v4m0 10v4M3 12h4m10 0h4"/></svg>Matches</button>
+  <button data-v="teams">
+    <svg viewBox="0 0 24 24"><path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 20v-2a4 4 0 0 0-3-3.87"/></svg>Teams</button>
+  <button data-v="calc">
+    <svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 11h2m4 0h2M8 16h2m4 0h2"/></svg>Calculator</button>
+  <button data-v="algo">
+    <svg viewBox="0 0 24 24"><path d="M4 17l5-5-5-5M12 19h8"/></svg>Algorithms</button>
+  <button data-v="info">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5M12 8h.01"/></svg>Model</button>
+</nav>
+
+<div class="ov" id="ov"><div class="sheet" id="sheet"></div></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+import { getFirestore, doc, getDoc, collection, query, where, orderBy, limit, getDocs, documentId }
+  from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+
+/* ════════════════════════════════════════════════════════════
+   1.  FIREBASE  —  paste your web config here (SETUP.md step 3)
+   ════════════════════════════════════════════════════════════ */
+const firebaseConfig = {
+  apiKey:            "AIzaSyCXQa90edRos4BzoK4md2OYeq_ogYoesjQ",
+  authDomain:        "zxtvfb-bb48a.firebaseapp.com",
+  projectId:         "zxtvfb-bb48a",
+  storageBucket:     "zxtvfb-bb48a.firebasestorage.app",
+  messagingSenderId: "982389556203",
+  appId:             "1:982389556203:web:6013bd601a9d7cf19f0fae",
+  measurementId:     "G-2RGRKDW7ZV"
+};
+
+let db = null, dbOK = false;
+try {
+  db = getFirestore(initializeApp(firebaseConfig));
+  dbOK = !firebaseConfig.projectId.startsWith('PASTE');
+} catch (e) { console.error(e); }
+
+/* ════════════════════════════════════════════════════════════
+   2.  PROBABILITY ENGINE
+   ════════════════════════════════════════════════════════════ */
+/* The engine lives in model.mjs, served alongside this page and
+   imported by the Worker too, so the browser and the server cannot
+   disagree about a probability. It used to be pasted here as well; the
+   two copies are exactly the kind of thing that drifts silently. */
+import { PM, ST } from './model.mjs';
+
+/* ════════════════════════════════════════════════════════════
+   3.  STATE + HELPERS
+   ════════════════════════════════════════════════════════════ */
+const S = {
+  date: todayISO(),
+  sort: 'league',         // 'league' | 'conf' | 'edge'
+  query: '',              // team search in the matches tab
+  bookOnly: false,        // restrict to leagues the bookmaker covers
+  bookLeagues: null,      // Set of league ids, from config/leagues
+  globalAvg: null,        // league averages across everything stored, from meta/model
+  cal: null,              // corrections measured by the backtest, from meta/model
+  statCache: new Map(),   // leagueId -> {teams:{id:stats}, avg:{h,a,h1h,h1a}}
+  oddsCache: new Map(),   // dateISO -> { fixtureKey: priced }
+  teamCache: new Map(),   // teamId -> full team doc
+  calc: { h:null, a:null }
+};
+
+function todayISO(d = new Date()) {
+  return new Date(d.getTime() - d.getTimezoneOffset()*6e4).toISOString().slice(0,10);
+}
+/* midnight UTC, when the fixture feed moves on a day, in local time */
+function feedReleaseLocal() {
+  const d = new Date(); d.setUTCHours(24, 0, 0, 0);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+function shiftDay(iso, n) { const d = new Date(iso+'T12:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
+function pct(x) { return (x*100).toFixed(0) + '%'; }
+function pct1(x){ return (x*100).toFixed(1) + '%'; }
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function odds(p) { return p > 0.004 ? (1/p).toFixed(2) : '—'; }
+function setStatus(txt, cls) { const e = document.getElementById('status'); e.textContent = txt; e.className = 'pill ' + (cls||''); }
+
+const FINISHED = new Set(['FT','AET','PEN']);
+const LIVE     = new Set(['1H','HT','2H','ET','BT','P','LIVE','INT']);
+
+/* Women's competitions are never shown. The Worker drops them before
+   storing (src/lib.mjs, the same list); this catches anything stored
+   before a name was added to the list. */
+const W_PATTERNS = [
+  /\bwomen'?s?\b/i, /\bwoman\b/i, /\bladies\b/i, /\bgirls\b/i,
+  /\bf[ée]minin[ae]?s?\b/i, /\bfemenin[ao]s?\b/i, /\bfemminile\b/i,
+  /\bfeminino\b/i, /\bfrauen\b/i, /\bdamen\b/i, /\bdames\b/i,
+  /\bkvinner\b/i, /\bkvinde\b/i, /\bnaiset\b/i, /\bkobiet\b/i,
+  /\bzeny\b/i, /\bzenska\b/i, /\bnoi\b/i, /\bgynaik\w*\b/i,
+  /\bdamallsvenskan\b/i, /\btoppserien\b/i, /\bfrauen[- ]?bundesliga\b/i,
+  /\bnwsl\b/i, /\bwsl\b/i, /\bw[- ]?league\b/i, /\bwomens?\b/i,
+  /\(w\)/i, /\bu?\d{0,2}\s*w$/i,
+  /\bliga\s*f\b/i, /\bwe[- ]?league\b/i, /\bwk[- ]?league\b/i,
+  /\bfemenil\b/i, /\bfemen[ií](?![a-z])/i,
+  /\bvrouwen\b/i, /\bkvind\w*/i, /\bnaisten\b/i, /\belitettan\b/i,
+  /\bkad[ıi]nlar?\b/i, /(^|[^a-zà-ž])[zž]en[ey](\b|$)/i, /\b[zž]ensk[aá]\b/i, /\bn[őo]i\b/i,
+  /\bcopa de la reina\b/i, /\bshebelieves\b/i, /\bmatildas\b/i, /\bfeminil\b/i
+];
+const isWomens = (...names) => names.some(raw => {
+  const s = String(raw || '').trim();
+  return !!s && (W_PATTERNS.some(re => re.test(s)) || /\s+w$/i.test(s));
+});
+
+/* ════════════════════════════════════════════════════════════════
+   Read throttle.
+
+   A busy date has a few hundred fixtures, and every row asks for its
+   league's stats at once. Firing all of those simultaneously saturates
+   the connection, and anything requested afterwards — like the detail
+   sheet you just tapped — waits behind the whole queue. Capping the
+   number in flight keeps the list filling steadily and leaves room for
+   a tap to be answered straight away.
+   ════════════════════════════════════════════════════════════════ */
+const gate = (max) => {
+  let active = 0; const queue = [];
+  const pump = () => {
+    while (active < max && queue.length) {
+      const { fn, res, rej } = queue.shift();
+      active++;
+      Promise.resolve().then(fn).then(res, rej).finally(() => { active--; pump(); });
+    }
+  };
+  return fn => new Promise((res, rej) => { queue.push({ fn, res, rej }); pump(); });
+};
+const readLimit = gate(6);
+
+/* Firestore's getDoc() has no timeout. On a weak connection it does not
+   fail — it queues the read and the promise simply never settles. Nothing
+   rejects, nothing logs, and anything awaiting it waits forever. Every
+   read here is raced against a deadline so a dead connection surfaces as
+   an error instead of a permanent wait. */
+const READ_TIMEOUT = 9000;
+function withTimeout(p, ms = READ_TIMEOUT, what = 'read') {
+  return new Promise((res, rej) => {
+    const t = setTimeout(() => rej(new Error(what + ' timed out after ' + (ms/1000) + 's')), ms);
+    p.then(v => { clearTimeout(t); res(v); },
+           e => { clearTimeout(t); rej(e); });
+  });
+}
+
+/* Caches hold the in-flight PROMISE, not the resolved value. Storing the
+   value only on completion meant forty rows of the same league each
+   missed the cache and issued their own identical read.
+
+   A rejected promise is evicted. Keeping it meant one failed read poisoned
+   that key for the life of the page: every later tap got the same dead
+   promise back and failed identically, so the app never recovered from a
+   single dropped connection without a reload. */
+function cached(map, key, load) {
+  if (map.has(key)) return map.get(key);
+  const p = withTimeout(readLimit(load), READ_TIMEOUT, key)
+    .catch(e => { map.delete(key); throw e; });
+  map.set(key, p);
+  return p;
+}
+/* Callers that would rather have nothing than an error */
+const soft = p => p.catch(() => null);
+
+/* The ingest stores big collections as JSON strings rather than native
+   Firestore arrays and maps. Encoding them natively costs more CPU than
+   a Worker invocation is allowed on Cloudflare's free plan, and reading
+   one string is cheaper here too. Native values are still accepted so
+   documents written by the older build keep working. */
+function unpack(v) {
+  if (Array.isArray(v)) return v;
+  if (typeof v !== 'string' || !v) return [];
+  try { const o = JSON.parse(v); return Array.isArray(o) ? o : []; } catch { return []; }
+}
+function unpackObj(v) {
+  if (v && typeof v === 'object') return v;
+  if (typeof v !== 'string' || !v) return {};
+  try { const o = JSON.parse(v); return (o && typeof o === 'object') ? o : {}; } catch { return {}; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   4.  DATA ACCESS
+   ════════════════════════════════════════════════════════════ */
+async function getDayFixtures(dateISO) {
+  if (!dbOK) return null;
+  const snap = await withTimeout(
+    getDocs(query(collection(db,'fixtures'), where('date','==',dateISO))), 15000, 'fixtures');
+  const out = [];
+  snap.forEach(d => {
+    const rows = unpack(d.data().f);
+    for (const f of rows) if (!isWomens(f.lname, f.hname, f.aname)) out.push(f);
+  });
+  return out;
+}
+function getLeagueStats(leagueId) {
+  if (!leagueId || !dbOK) return Promise.resolve(null);
+  return cached(S.statCache, leagueId, async () => {
+    const ck = 'gp_lg_' + leagueId;
+    try {
+      const raw = localStorage.getItem(ck);
+      if (raw) {
+        const o = JSON.parse(raw);
+        /* Short TTL on purpose. A six-hour cache meant that after a history
+           import the browser kept serving pre-import stats for most of a day
+           with no way to tell. Fifteen minutes costs one read per league. */
+        if (Date.now() - o.t < 9e5) return o.v;
+      }
+    } catch {}
+    const d = await getDoc(doc(db,'cache','league_' + leagueId));
+    let v = d.exists() ? d.data() : null;
+    if (v) v = { ...v, teams: unpackObj(v.teams) };
+    try { localStorage.setItem(ck, JSON.stringify({t:Date.now(), v})); } catch {}
+    return v;
+  });
+}
+/* Bookmaker prices for one date, written by the odds function.
+   One document per date, so this is a single read however many matches. */
+function getOdds(dateISO) {
+  if (!dbOK) return Promise.resolve(null);
+  return cached(S.oddsCache, dateISO, async () => {
+    const d = await getDoc(doc(db, 'odds', dateISO));
+    return d.exists() ? unpackObj(d.data().o) : {};
+  });
+}
+
+/* The ingest writes the odds lookup key onto every fixture as `k`.
+   It is NOT recomputed here on purpose: an earlier version did, the two
+   implementations drifted, and no price ever matched a fixture without
+   anything reporting an error. One implementation, server side. */
+const oddsFor = (odds, f) => (odds && f && f.k) ? (odds[f.k] || null) : null;
+
+/* Score one fixture.
+
+     raw   the model's own opinion, built from the two teams' records and
+           corrected by whatever the backtest measured. No prices in it.
+     r     the forecast, which is what gets shown and ranked. Where a
+           bookmaker price exists it is mostly the market: the 1X2 and
+           over/under lean straight on the devigged price, and everything
+           the market does not quote — the half-time result above all —
+           is rebuilt from the expected goals those prices imply. Where
+           there is no price, r is simply raw.
+     v     what each selection pays at your bookmaker, set against the
+           market's fair probability. This, not the model, is what decides
+           whether a price is worth taking. */
+function scoreFixture(H, A, avg, odds, f) {
+  const od  = oddsFor(odds, f);
+  const raw = PM.run(H, A, avg, S.cal);
+  const r   = PM.blend(raw, ST.market(od), undefined, S.cal);
+  return { f, od, raw, r, v: valueOf(r, raw, od) };
+}
+
+const legProb = (r, k) => k === '1' ? r.hw : k === 'X' ? r.dr : k === '2' ? r.aw
+                        : k === 'O25' ? r.o25 : k === 'U25' ? 1 - r.o25 : NaN;
+const BOOK_NAME = 'your bookmaker';
+const srcName = src => src === ST.SHARP ? 'Pinnacle' : src === 'consensus' ? 'the middle of the market' : (src || 'one bookmaker');
+const signed = (x, dp = 1) => (x >= 0 ? '+' : '') + (x * 100).toFixed(dp) + '%';
+
+/* Every selection on a priced fixture: the price, the market's fair
+   probability, the forecast, the model's own number, and the expected
+   value of the price against the market. ST.legs() does the pricing so
+   that the ledger and the screen cannot disagree. */
+function valueOf(r, raw, od) {
+  const base = ST.legs(od);
+  if (!base.length) return null;
+  const legs = base.map(l => ({ ...l, p: legProb(r, l.k), model: legProb(raw, l.k) }));
+  /* `top` is the outcome the forecast rates most likely — the one the
+     row shows and By value is built from. `best` is the best-priced. */
+  const top  = [...legs].sort((a, b) => b.p - a.p)[0];
+  const best = [...legs].sort((a, b) => b.ev - a.ev)[0];
+  return { legs, top, best, book: od.bk, over: od.ov, books: od.books,
+           mine: legs.some(l => l.mine), trusted: legs.some(l => l.trusted) };
+}
+
+/* The market card on a match sheet. */
+function marketHtml(v) {
+  return `
+    <div class="ttl">The price against the market</div>
+    <div class="card">
+      ${v.legs.map(l => {
+        const cls = l.ev >= 0.01 ? 'pos' : l.ev <= -0.04 ? 'neg' : 'flat';
+        return `<div class="cmp">
+          <div class="row" style="gap:10px">
+            <div style="width:64px;font-weight:700">${esc(l.label)}</div>
+            <div style="flex:1;font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums">
+              ${l.mine ? `<b style="color:var(--fg)">1xBet ${l.price.toFixed(2)}</b>` : `best ${l.price.toFixed(2)}`}
+              · fair ${(1 / l.fair).toFixed(2)} (${pct1(l.fair)})${l.mine && l.best > l.price ? ` · best elsewhere ${l.best.toFixed(2)}` : ''}
+              ${l.fresh ? '' : ' · <i>older quote</i>'}
+              <br>model alone ${pct1(l.model)}
+            </div>
+            <div class="val ${cls}">${signed(l.ev)}</div>
+          </div></div>`;
+      }).join('')}
+    </div>
+    <div class="note">The figure on the right is what each unit staked returns on average at that price
+      <b>if the market's fair probability is right</b> — taken from ${esc(srcName(v.book))}
+      with the margin removed${v.books ? `, ${v.books} bookmaker${v.books === 1 ? '' : 's'} quoting` : ''}.
+      ${v.mine ? '' : `1xBet's own price was not in the feed for this match, so the best price anywhere is shown instead — check what 1xBet is actually offering.`}
+      ${v.trusted ? '' : `Too few bookmakers are quoting for that fair probability to be relied on yet.`}
+      The model's own number is shown for interest: where it disagrees with a liquid market, the market is nearly always the one that is right.</div>`;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   ALGORITHMS
+
+   Each strategy takes the priced fixture list and returns ranked
+   selections. To add one, append an object with the same shape —
+   nothing else in the app needs to change.
+
+   An item is { f, od } for a strategy that runs on prices alone
+   (needsOdds), and { f, od, raw, r, v } otherwise: the fixture, its
+   stored prices, the model's own result, the forecast, and the market
+   comparison (null when no bookmaker price is stored).
+   ════════════════════════════════════════════════════════════════ */
+const ALGOS = [
+  {
+    id: 'flipx2',
+    name: 'Flip x2',
+    blurb: 'A single selection priced near 2.00 at 1xBet. Listed best-priced first: the ones where 1xBet is paying more than the sharp market says the bet is worth, then the ones closest to a fair price. The verdict comes from the price, not from the model.',
+    needsOdds: true,
+    tracked: true,        // the picks job keeps a ledger for this one
+    params: ST.FLIP,
+    requirement: p => `Flip x2 needs 1xBet's own price in the feed, within ${p.band.toFixed(2)} of ` +
+                      `${p.target.toFixed(2)}, and a fair probability it can trust — Pinnacle's, or the ` +
+                      `middle of at least ${p.minBooks} other bookmakers. A day ahead of kick-off some of ` +
+                      `that is often not posted yet.`,
+
+    /* The rule lives in ST.flip(), shared with the Worker's ledger. */
+    run(items) { return ST.flip(items); },
+    section: x => x.tier === 'value'
+      ? 'Value — 1xBet is paying more than the market says it should'
+      : 'Close to a fair price — no edge, but the least you can give away',
+    sectionOrder: x => x.tier === 'value' ? 0 : 1,
+    empty(items) {
+      const c = ST.flipBlockers(items);
+      const why = [];
+      if (c.noMine)    why.push(`${c.noMine} had no 1xBet price in the feed`);
+      if (c.untrusted) why.push(`${c.untrusted} had too few bookmakers quoting to judge the price`);
+      if (c.outOfBand) why.push(`${c.outOfBand} had nothing priced near ${ST.FLIP.target.toFixed(2)}`);
+      if (c.tooPoor)   why.push(`${c.tooPoor} were priced too far below fair to list`);
+      return why.length ? `Of ${c.priced} priced match${c.priced === 1 ? '' : 'es'}: ${why.join('; ')}.` : '';
+    },
+
+    note: `<b style="color:var(--warn)">Read this before betting it.</b> "Value" means 1xBet's price is higher
+      than the bet is worth on the sharp market's own numbers — the one kind of edge that showed up as
+      real when it was tested. Three cautions. The prices are fetched once a day, in the morning: check
+      what 1xBet is offering <i>now</i>, and if it has dropped below the fair odds shown, the value is gone.
+      An edge of a point or two only shows over hundreds of bets, never over a weekend. And a bookmaker
+      that sees an account taking its best prices consistently tends to limit it.`,
+
+    render(x) {
+      const l = x.leg;
+      return {
+        pick: `${l.label} @ ${l.price.toFixed(2)}`,
+        headline: signed(l.ev),
+        tone: x.tier === 'value' ? 'pos' : 'flat',
+        sub: `market makes it ${pct1(l.fair)}, fair odds ${(1 / l.fair).toFixed(2)} · ` +
+             `from ${srcName(l.src)}` +
+             (l.best > l.price ? ` · best elsewhere ${l.best.toFixed(2)}` : '')
+      };
+    }
+  },
+
+  {
+    id: 'htd',
+    name: 'HTD',
+    blurb: 'Half-time draw, likeliest first. Where a match has bookmaker prices the estimate is built from the goals those prices imply, which is far more accurate than the model alone; where it has none, it is the model, and it says so on the row.',
+    needsOdds: false,
+    tracked: true,        // the picks job keeps a ledger for this one too
+    params: ST.HTD,
+    requirement: p => `HTD lists a match only when the half-time draw is at least ` +
+                      `${(p.lift * 100).toFixed(0)} points likelier than the ` +
+                      `${pct(PM.baseOf(S.cal).h1d)} it is across football generally.`,
+
+    /* The rule lives in ST.htd(), shared with the Worker's ledger. */
+    run(items) { return ST.htd(items, S.cal); },
+    section: x => x.priced ? 'Backed by bookmaker prices' : 'Model only — no price for these, treat with more caution',
+    sectionOrder: x => x.priced ? 0 : 1,
+
+    note: `<b style="color:var(--warn)">Read this before betting it.</b> No half-time draw price is in the feed,
+      so this list cannot tell you whether a bet is good — only how likely the draw is. The number that matters
+      is the one on each row: take the bet only if 1xBet's half-time draw price is <i>above</i> it. Half-time
+      draws are usually priced between 2.0 and 2.4, so a match here at 45% (fair odds 2.22) is only a bet if
+      1xBet is paying more than 2.22.`,
+
+    render(x) {
+      return {
+        pick: 'Half-time draw',
+        headline: pct1(x.prob),
+        sub: `worth backing only above ${x.fair.toFixed(2)} · ` +
+             `${signed(x.lift)} on the usual rate · ` +
+             `${x.goals.toFixed(2)} goals expected before the break` +
+             (x.priced ? (x.totals ? '' : ' · from 1X2 prices only') : '')
+      };
+    }
+  }
+];
+
+/* A team document -> the stat block the engine takes.
+
+   The document carries the matches themselves, so the block is rebuilt
+   from them with the engine this page is running rather than taken on
+   trust from whenever it was last stored. The rating from closing
+   prices sits beside the matches (the results import writes it) and
+   rides along on the block, the same way it does in a league bundle. */
+function blockOf(t) {
+  if (!t) return null;
+  const ms = unpack(t.m);
+  const blk = ms.length ? PM.profile(ms) : (t.s || null);
+  return blk && t.mr ? { ...blk, mr: t.mr } : blk;
+}
+
+function getTeam(id) {
+  if (!id || !dbOK) return Promise.resolve(null);
+  return cached(S.teamCache, String(id), async () => {
+    const d = await getDoc(doc(db,'teams', String(id)));
+    return d.exists() ? d.data() : null;
+  });
+}
+async function searchTeams(term) {
+  if (!dbOK || term.length < 2) return [];
+  const t = term.toLowerCase();
+  const snap = await withTimeout(getDocs(query(
+    collection(db,'teams'),
+    orderBy('search'), where('search','>=',t), where('search','<=', t+'\uf8ff'),
+    limit(14)
+  )), READ_TIMEOUT, 'team search');
+  const out = []; snap.forEach(d => out.push({ id:d.id, ...d.data() }));
+  return out;
+}
+
+/* Pull the two stat blocks a fixture needs.
+
+   The league bundle is one read for a whole league, so it is tried first.
+   But a bundle can lag: the history import writes team documents directly
+   and a bundle rebuilt before that still holds the old, thinner stats.
+   When the bundle looks thinner than the team document, the team document
+   wins — otherwise a team with 45 imported matches shows up as 1 here
+   while its full profile shows all 45. */
+async function statsFor(fx, strict = false) {
+  /* Rows and background jobs would rather show nothing than throw, so they
+     swallow read failures. The detail sheet passes strict: a failure there
+     must reach the person, otherwise a dropped connection is indis-
+     tinguishable from a team that genuinely has no history.
+
+     The league bundle stays soft either way. Losing it is survivable —
+     the team documents still answer, and the model falls back to its own
+     league priors — so a failed bundle read should degrade, not abort. */
+  const wrap = strict ? (p => p) : soft;
+  const lg = await soft(getLeagueStats(fx.lid));
+  const pick = async id => {
+    /* If the bundle holds this team, that IS the answer.
+
+       An earlier rule treated a bundled team with fewer than ten matches
+       as suspect and read its full document to double-check. That was
+       written for stale bundles after a history import, but most leagues
+       are not in the import at all — their teams legitimately have one or
+       two matches — so the check fired on almost every row and turned a
+       single league read into hundreds of team reads. history now rebuilds
+       its bundles itself, so the suspicion is no longer needed. */
+    const bundled = lg && lg.teams ? lg.teams[id] : null;
+    if (bundled) return bundled;
+    return blockOf(await wrap(getTeam(id)));
+  };
+  const [H, A] = await Promise.all([pick(fx.hid), pick(fx.aid)]);
+  /* Never hand the model a null league average if anything better is
+     known. lambdas() divides by the league mean, so when that mean is
+     wrong every probability is wrong with it — in testing, falling back
+     to the hardcoded constant doubled the model's calibration error.
+     globalAvg is measured from the stored leagues; the constants inside
+     the engine are only the last resort. */
+  return { H, A, avg: (lg && lg.avg && lg.avg.h > 0) ? lg.avg : S.globalAvg };
+}
+
+/* Below this many matches a profile carries almost no information: the
+   shrinkage pulls it to the league average, so the "prediction" would be
+   the league average dressed up as a forecast. Better to show nothing. */
+const MIN_MATCHES = ST.MIN_MATCHES;
+
+/* By value ranks on price, and price rises as probability falls, so with
+   no floor the top of the list would be whatever the model is least sure
+   about. A selection has to be at least this likely before it earns a
+   place — "highest probability bets, longest odds first" rather than
+   "longest odds". Lower it to see more, raise it to see only strong ones. */
+const MIN_VALUE_P = 0.40;
+
+/* ════════════════════════════════════════════════════════════
+   5.  MATCHES VIEW
+   ════════════════════════════════════════════════════════════ */
+function renderDates() {
+  const box = document.getElementById('dates');
+  const t = todayISO();
+  box.innerHTML = '';
+  /* seven days: three back, today, three forward — the same window the
+     ingest keeps, so every chip has data behind it (or will once the API
+     plan allows fixtures more than one day ahead) */
+  for (let i = -3; i <= 3; i++) {
+    const iso = shiftDay(t, i);
+    const d = new Date(iso + 'T12:00:00Z');
+    const b = document.createElement('div');
+    b.className = 'dchip' + (iso === S.date ? ' on' : '');
+    b.innerHTML = `<i>${i===0?'Today':d.toLocaleDateString(undefined,{weekday:'short',timeZone:'UTC'})}</i><b>${d.getUTCDate()}</b>`;
+    b.onclick = () => { S.date = iso; renderDates(); renderFixtures(); };
+    box.appendChild(b);
+  }
+  const on = box.querySelector('.dchip.on');
+  if (on) on.scrollIntoView({ inline:'center', block:'nearest' });
+}
+
+async function renderFixtures() {
+  const box = document.getElementById('fixtures');
+  if (!dbOK) {
+    box.innerHTML = `<div class="empty"><b>Firebase not configured</b>Open index.html and paste your web config into <code>firebaseConfig</code> (SETUP.md step 3).</div>`;
+    setStatus('not configured','err'); return;
+  }
+  box.innerHTML = '<div class="skel"></div><div class="skel"></div>';
+  let fx;
+  const asked = S.date;
+  try { fx = await getDayFixtures(asked); setStatus('live','ok'); }
+  catch (e) {
+    console.error(e); setStatus('read error','err');
+    if (asked !== S.date) return;
+    /* A read that never comes back is a connection problem far more often
+       than a rules problem, and the two need different fixes. */
+    const slow = /timed out/.test(String(e && e.message));
+    box.innerHTML = `<div class="empty"><b>${slow ? 'The match list did not arrive' : 'Could not read the database'}</b>
+      ${slow ? 'The connection is slow or dropped. Nothing is wrong with the data.'
+             : esc(e && e.message ? e.message : String(e))}<br><br>
+      <button class="btn alt" id="fxRetry" style="margin-top:4px">Try again</button></div>`;
+    const b = document.getElementById('fxRetry'); if (b) b.onclick = renderFixtures;
+    return;
+  }
+  /* the date may have been changed while this was in flight */
+  if (asked !== S.date) return;
+
+  if (!fx || !fx.length) {
+    const ahead = Math.round((Date.parse(S.date + 'T12:00:00Z') - Date.parse(todayISO() + 'T12:00:00Z')) / 864e5);
+    box.innerHTML = ahead > 0
+      ? `<div class="empty"><b>Not released yet</b>The fixture feed works a day at a time and releases each new day at midnight UTC —
+         ${feedReleaseLocal()} your time. Until then a list appears here only for the twelve leagues with bookmaker prices,
+         once the morning price fetch has run. Bets for this day can be placed from ${feedReleaseLocal()} onwards with the full list.</div>`
+      : `<div class="empty"><b>No fixtures stored for this date</b>Fixtures are kept for three days either side of today.</div>`;
+    return;
+  }
+  const provisional = fx.some(f => f.prov);
+
+  /* filters apply to every sort mode */
+  const all = fx.length;
+  fx = applyFilters(fx);
+  if (!fx.length) {
+    box.innerHTML = `<div class="empty"><b>Nothing matches your filters</b>${
+      all} fixture${all === 1 ? '' : 's'} stored for this date.${
+      S.query ? ` No team matching “${esc(S.query)}” plays today — try another date.` : ''}</div>`;
+    return;
+  }
+
+  if (S.sort === 'league') renderByLeague(fx, box);
+  else                     await renderRanked(fx, box, S.sort);
+  if (provisional && box.isConnected) box.insertAdjacentHTML('afterbegin',
+    `<div class="note"><b>Provisional list.</b> The fixture feed has not released this day yet, so these are the matches on the
+     bookmakers' card for the twelve priced leagues. Forecasts and prices are complete for them. The full list,
+     every league, replaces it at ${feedReleaseLocal()} your time.</div>`);
+}
+
+/* Team search and the bookmaker-coverage toggle, applied before sorting. */
+function applyFilters(fx) {
+  let out = fx;
+  if (S.bookOnly && S.bookLeagues && S.bookLeagues.size) {
+    out = out.filter(f => S.bookLeagues.has(String(f.lid)));
+  }
+  const q = S.query.trim().toLowerCase();
+  if (q) {
+    out = out.filter(f =>
+      String(f.hname || '').toLowerCase().includes(q) ||
+      String(f.aname || '').toLowerCase().includes(q) ||
+      String(f.lname || '').toLowerCase().includes(q) ||
+      String(f.ctry  || '').toLowerCase().includes(q));
+  }
+  return out;
+}
+
+/* ---- league view: country A→Z, then league within each country ---- */
+function renderByLeague(fx, box) {
+  const groups = new Map();
+  for (const f of fx) {
+    const k = f.lid || 0;
+    if (!groups.has(k)) groups.set(k, { lid:k, name:f.lname, country:f.ctry, flag:f.flag, items:[] });
+    groups.get(k).items.push(f);
+  }
+
+  /* Numeric collation so "Ligue 2" follows "Ligue 1" rather than
+     "Ligue 10", and base sensitivity so accents and case do not split
+     a country. Leagues with no country sort last instead of first. */
+  const cmp = (x, y) => String(x || '').localeCompare(String(y || ''), undefined,
+    { numeric: true, sensitivity: 'base' });
+
+  const list = [...groups.values()].sort((a, b) => {
+    const ac = (a.country || '').trim(), bc = (b.country || '').trim();
+    if (!ac !== !bc) return ac ? -1 : 1;          // unknown country to the end
+    return cmp(ac, bc) || cmp(a.name, b.name);
+  });
+
+  box.innerHTML = '';
+  for (const g of list) {
+    g.items.sort((a,b) => (a.ts||0) - (b.ts||0));
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML =
+      `<div class="lg-hd">
+         ${g.flag ? `<img src="${esc(g.flag)}" alt="" loading="lazy">` : ''}
+         <span class="nm">${esc(g.name||'Unknown league')}</span>
+         <span class="ct">${esc(g.country||'')}</span>
+         <span class="cnt">${g.items.length}</span>
+       </div>`;
+    const body = document.createElement('div');
+    card.appendChild(body);
+    for (const f of g.items) body.appendChild(fixtureRow(f));
+    box.appendChild(card);
+  }
+}
+
+/* ---- ranked views ----
+   mode 'conf' : strongest prediction first, regardless of price
+   mode 'edge' : biggest disagreement with the bookmaker first  */
+async function renderRanked(fx, box, mode) {
+  const pending = fx.filter(f => !FINISHED.has(f.st));
+  if (!pending.length) {
+    box.innerHTML = `<div class="empty"><b>Nothing left to price</b>Every match on this date has finished. Switch to a forward date for upcoming fixtures.</div>`;
+    return;
+  }
+
+  box.innerHTML = `<div class="note">Pricing ${pending.length} matches…</div><div class="skel"></div><div class="skel"></div>`;
+
+  const odds = await soft(getOdds(S.date));
+  const scored = [];
+  let unpriced = 0, noPrice = 0;
+
+  const results = await Promise.all(pending.map(async f => {
+    try {
+      const { H, A, avg } = await statsFor(f);
+      if (!H || !A || H.n < MIN_MATCHES || A.n < MIN_MATCHES) return null;
+      return scoreFixture(H, A, avg, odds, f);
+    } catch { return null; }
+  }));
+  let belowFloor = 0;
+  for (const x of results) {
+    if (!x) { unpriced++; continue; }
+    if (mode === 'edge') {
+      if (!x.v) { noPrice++; continue; }
+      if (x.v.top.p < MIN_VALUE_P) { belowFloor++; continue; }
+    }
+    scored.push(x);
+  }
+
+  if (!scored.length) {
+    box.innerHTML = mode !== 'edge'
+      ? `<div class="empty"><b>No match can be priced yet</b>Both teams need at least ${MIN_MATCHES} stored matches before a prediction exists.</div>`
+      : belowFloor
+        ? `<div class="empty"><b>Nothing clears the bar</b>${belowFloor} priced match${belowFloor === 1 ? '' : 'es'} on this date, but in none of them is any outcome at least ${pct(MIN_VALUE_P)} likely.</div>`
+        : `<div class="empty"><b>No bookmaker prices for this date</b>Prices are fetched once a day, in the morning, for twelve leagues and up to three days ahead. ${noPrice ? `${noPrice} match${noPrice === 1 ? '' : 'es'} here could be forecast but ${noPrice === 1 ? 'has' : 'have'} no price stored — either the league is not one of the twelve or the bookmakers have not posted it yet.` : ''}</div>`;
+    return;
+  }
+
+  /* By value: each match contributes the outcome the forecast rates most
+     likely, and those are ordered by the price you would be paid for it
+     — longest odds at the top. Sorting by price alone would fill the top
+     with outcomes nobody expects, so a selection has to clear
+     MIN_VALUE_P before it is listed at all. Matches carrying 1xBet's own
+     price come before ones that only have the best price elsewhere. */
+  scored.sort(mode === 'edge'
+    ? (a, b) => (b.v.top.mine - a.v.top.mine) || b.v.top.price - a.v.top.price || b.v.top.p - a.v.top.p
+    : (a, b) => b.r.pick.p - a.r.pick.p);
+
+  box.innerHTML = '';
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML =
+    `<div class="lg-hd">
+       <span class="nm">${mode === 'edge' ? 'Best odds first' : 'Strongest predictions first'}</span>
+       <span class="cnt">${scored.length}</span>
+     </div>`;
+  const body = document.createElement('div');
+  card.appendChild(body);
+  for (const x of scored) body.appendChild(fixtureRow(x.f, x.r, true, x.v));
+  box.appendChild(card);
+
+  const notes = [];
+  if (unpriced) notes.push(`${unpriced} match${unpriced === 1 ? '' : 'es'} could not be priced — one or both teams have no stored history yet.`);
+  if (noPrice)  notes.push(`${noPrice} match${noPrice === 1 ? ' has' : 'es have'} no bookmaker price stored, so no value can be computed.`);
+  if (belowFloor) notes.push(`${belowFloor} match${belowFloor === 1 ? '' : 'es'} left out because the likeliest outcome is under ${pct(MIN_VALUE_P)} — long odds on an outcome nobody expects is not value.`);
+  if (mode === 'edge') notes.push(`Each match shows its likeliest outcome, ordered by the price paid for it, longest first. The figure on the right is what that price is worth against the market's own fair probability: a plus means 1xBet is paying more than the bet is worth, a minus is what you give away by taking it.`);
+  for (const t of notes) {
+    const n = document.createElement('div');
+    n.className = 'note'; n.textContent = t;
+    box.appendChild(n);
+  }
+}
+
+/* `pre` is a precomputed PM.run result; when absent it is fetched lazily.
+   `showLeague` adds a league line, needed once rows are mixed together. */
+function fixtureRow(f, pre, showLeague, value) {
+  const el = document.createElement('div');
+  el.className = 'mx';
+  const fin = FINISHED.has(f.st), live = LIVE.has(f.st);
+  const time = f.ts
+    ? new Date(f.ts*1000).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})
+    : '--:--';
+  /* The score shown is the ninety-minute one, because that is what a
+     1X2 or over/under bet is settled on. A tie that went further says
+     so, with the final score underneath. */
+  const extra = fin && f.st !== 'FT'
+    ? `<div class="tt" style="font-size:10px;line-height:1.3;margin-top:2px">${
+        Array.isArray(f.et) ? `${f.et[0]}–${f.et[1]} ` : ''}${f.st === 'PEN' ? 'pens' : 'a.e.t.'}</div>` : '';
+  const meta = live ? `<div class="live">LIVE</div>`
+            : fin  ? `<div class="ft">FT</div>${extra}`
+                   : `<div class="tt">${time}</div>`;
+  const sh = (fin||live) ? `<div class="sc ${f.gh>f.ga?'hi':''}">${f.gh ?? ''}</div>` : '';
+  const sa = (fin||live) ? `<div class="sc ${f.ga>f.gh?'hi':''}">${f.ga ?? ''}</div>` : '';
+
+  el.innerHTML =
+    `<div class="tm">
+       ${showLeague ? `<div class="lgline">${esc(f.ctry||'')}${f.ctry&&f.lname?' · ':''}${esc(f.lname||'')}</div>` : ''}
+       <div class="tr">${f.hlogo?`<img src="${esc(f.hlogo)}" loading="lazy" alt="">`:''}<span>${esc(f.hname)}</span>${sh}</div>
+       <div class="tr">${f.alogo?`<img src="${esc(f.alogo)}" loading="lazy" alt="">`:''}<span>${esc(f.aname)}</span>${sa}</div>
+       <div class="pslot"></div>
+     </div>
+     <div class="meta">${meta}</div>`;
+
+  el.onclick = () => openFixture(f);
+
+  const paint = (r, v) => {
+    const slot = el.querySelector('.pslot');
+    if (!slot || !r) return;
+    slot.innerHTML = predictionHTML(r, v);
+  };
+
+  if (pre) paint(pre, value);
+  else if (!fin) {
+    /* Priced only once the row is actually on screen.
+
+       Pricing every row up front meant a few hundred fixtures each
+       pulling their teams' documents — and a team document carries the
+       packed 45-match window, so that is megabytes of transfer before
+       anything is readable, with a tap queued behind all of it. A date
+       has maybe eight visible rows; those are the only ones worth
+       fetching until the person scrolls. */
+    watchRow(el, async () => {
+      const [{ H, A, avg }, odds] = await Promise.all([statsFor(f), soft(getOdds(S.date))]);
+      if (!H || !A) return;
+      if (H.n < MIN_MATCHES || A.n < MIN_MATCHES) { thin(el, H, A); return; }
+      const s = scoreFixture(H, A, avg, odds, f);
+      paint(s.r, s.v);
+    });
+  }
+  return el;
+}
+
+/* Says plainly that there is not enough history, rather than printing a
+   league-average guess that looks like a forecast. */
+function thin(el, H, A) {
+  const slot = el.querySelector('.pslot');
+  if (!slot) return;
+  const n = Math.min(H ? H.n || 0 : 0, A ? A.n || 0 : 0);
+  slot.innerHTML = `<div class="pct" style="margin-top:7px">
+    <span style="color:var(--dim)">not enough history${n ? ` — ${n} match${n === 1 ? '' : 'es'}` : ''}</span></div>`;
+}
+
+/* Runs `job` the first time `el` comes into view, then stops watching.
+   Falls back to running immediately where IntersectionObserver is absent. */
+const rowObserver = ('IntersectionObserver' in window)
+  ? new IntersectionObserver((entries, obs) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        obs.unobserve(e.target);
+        const job = e.target.__price;
+        if (job) { e.target.__price = null; job().catch(() => {}); }
+      }
+    }, { rootMargin: '400px 0px' })     // start a little before it scrolls in
+  : null;
+
+function watchRow(el, job) {
+  if (!rowObserver) { job().catch(() => {}); return; }
+  el.__price = job;
+  rowObserver.observe(el);
+}
+
+/* the probability strip, the headline pick, and the market comparison */
+function predictionHTML(r, v) {
+  const p = r.pick;
+  const hot = p.edge >= 0.15 ? ' hot' : '';
+
+  let market = '';
+  if (v) {
+    /* The likeliest outcome, the price paid for it, and what that price
+       is worth against the market's fair probability. */
+    const b = v.top;
+    const cls = b.ev >= 0.01 ? 'pos' : b.ev <= -0.04 ? 'neg' : 'flat';
+    market = `
+      <div class="mkt">
+        <span><b>${esc(b.label)}</b> ${b.mine ? '1xBet' : 'best'} ${b.price.toFixed(2)}</span>
+        <span>${pct(b.p)} likely · fair ${(1 / b.fair).toFixed(2)}</span>
+        <span class="val ${cls}">${signed(b.ev)}</span>
+      </div>`;
+  }
+
+  return `
+    <div class="pbar">
+      <i class="h" style="width:${r.hw*100}%"></i>
+      <i class="d" style="width:${r.dr*100}%"></i>
+      <i class="a" style="width:${r.aw*100}%"></i>
+    </div>
+    <div class="pct">
+      <span><b>1</b> ${pct(r.hw)}</span>
+      <span><b>X</b> ${pct(r.dr)}</span>
+      <span><b>2</b> ${pct(r.aw)}</span>
+      <span class="q"><b>BTTS</b> ${pct(r.btts)} · <b>O2.5</b> ${pct(r.o25)}</span>
+    </div>
+    <div class="pick${hot}">
+      <span class="tag">${esc(p.label)}</span>
+      <span class="pp">${pct(p.p)}</span>
+      <span class="eg">${p.edge >= 0 ? '+' : ''}${(p.edge*100).toFixed(0)}pp vs average</span>
+    </div>${market}`;
+}
+
+/* ════════════════════════════════════════════════════════════
+   6.  FIXTURE DETAIL SHEET
+   ════════════════════════════════════════════════════════════ */
+const ov = document.getElementById('ov'), sheet = document.getElementById('sheet');
+ov.onclick = e => { if (e.target === ov) closeSheet(); };
+function openSheet(html) { sheet.innerHTML = html; ov.classList.add('on'); sheet.scrollTop = 0; document.body.style.overflow='hidden'; }
+function closeSheet() { ov.classList.remove('on'); document.body.style.overflow=''; }
+window.closeSheet = closeSheet;
+
+async function openFixture(f) {
+  const head = `<div class="grab"></div>
+    <div class="sh-hd"><div class="t">${esc(f.hname)} v ${esc(f.aname)}</div>
+    <button class="x" onclick="closeSheet()">×</button></div>`;
+
+  openSheet(head + `<div class="skel"></div><div class="skel"></div>`);
+  window.__retryFixture = () => openFixture(f);
+
+  /* The stats decide whether there is anything to show, so they are
+     awaited. The prices are not: they are an extra column on a panel that
+     is useful without them. Awaiting both together meant a slow or stalled
+     odds read held the whole sheet on its skeletons — the panel never
+     appeared at all, rather than appearing without a market card. */
+  let H, A, avg;
+  try {
+    ({ H, A, avg } = await statsFor(f, true));
+  } catch (e) {
+    openSheet(head + `<div class="empty"><b>Could not load this match</b>
+      ${esc(e && e.message ? e.message : String(e))}<br><br>
+      This is a connection problem, not missing data — the reads above never
+      came back. Check your signal and try again.<br><br>
+      <button class="btn alt" style="margin-top:4px" onclick="window.__retryFixture()">Try again</button></div>`);
+    return;
+  }
+
+  if (!H || !A || !H.n || !A.n) {
+    openSheet(head + `<div class="empty"><b>Not enough history yet</b>
+      ${!H||!H.n ? esc(f.hname)+' has no stored matches. ' : ''}${!A||!A.n ? esc(f.aname)+' has no stored matches. ' : ''}
+      A profile builds up as results come in; nothing can be said about a side with no matches on record.</div>`);
+    return;
+  }
+
+  /* The prices are awaited here, unlike on the list.
+
+     The list shows the forecast, so a sheet showing the model alone
+     would contradict the row the person just tapped. Awaiting is safe:
+     every read is raced against a deadline and degrades to null, and
+     getOdds is promise-cached, so on a date the list has already loaded
+     this resolves at once. Worst case is a short wait and a sheet with
+     no market card.
+
+     (Named `prices`, not `odds`: there is a function called odds() used
+     further down, and a local of the same name hides it.) */
+  /* f.date is set by the strategies tab, which scans several days; a
+     row on the matches tab belongs to the date being shown. */
+  const prices = await soft(getOdds(f.date || S.date));
+  const { r, raw, v } = scoreFixture(H, A, avg, prices, f);
+
+  const bar = (a,b,c) => `<div class="pbar"><i class="h" style="width:${a*100}%"></i><i class="d" style="width:${b*100}%"></i><i class="a" style="width:${c*100}%"></i></div>`;
+  const marketCard = v ? marketHtml(v) : '';
+
+  /* Say where the numbers came from: the reader should know whether
+     they are looking at a market-backed forecast or the model alone. */
+  const h1ok = PM.hasH1(H) && PM.hasH1(A);
+  const basis = r.blended
+    ? `Built mostly from bookmaker prices${r.implied && !r.implied.fromTotals ? ' (1X2 only — no over/under price for this match yet)' : ''}, with the model filling in what they do not quote.`
+    : raw.rated >= 0.5
+      ? `No bookmaker price for this match yet. Both sides are rated from the prices their recent league matches closed at, which is the next best thing.`
+      : `No bookmaker price for this match, so this is the model alone, from the two teams' ${raw.cov >= 0.5 ? 'goals and shots' : 'results — goals only, no shot data in this league'}.`;
+  const h1note = h1ok ? '' : ` Half-time scores are missing for ${!PM.hasH1(H) ? esc(f.hname) : esc(f.aname)}, so the first-half figures are scaled from the full-match ones rather than measured.`;
+
+  openSheet(`
+    <div class="grab"></div>
+    <div class="sh-hd"><div class="t">${esc(f.hname)} v ${esc(f.aname)}</div>
+      <button class="x" onclick="closeSheet()">×</button></div>
+
+    <div class="card" style="padding:12px">
+      <div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.7px">Prediction</div>
+      <div style="display:flex;align-items:baseline;gap:9px;margin-top:6px">
+        <div style="font-size:19px;font-weight:800">${esc(r.pick.label)}</div>
+        <div style="font-size:19px;font-weight:800;color:var(--acc);font-variant-numeric:tabular-nums">${pct1(r.pick.p)}</div>
+      </div>
+      <div class="hint">${r.pick.edge >= 0 ? '+' : ''}${(r.pick.edge*100).toFixed(0)} points above the base rate for this market · next best ${esc(r.ranked[1].label)} ${pct(r.ranked[1].p)}</div>
+    </div>
+
+    <div class="card" style="padding:12px">
+      <div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.7px">Full time result</div>
+      ${bar(r.hw,r.dr,r.aw)}
+      <div class="pct" style="font-size:13px;margin-top:8px">
+        <span><b>1</b> ${pct1(r.hw)} <small style="color:var(--dim)">(${odds(r.hw)})</small></span>
+        <span><b>X</b> ${pct1(r.dr)} <small style="color:var(--dim)">(${odds(r.dr)})</small></span>
+        <span><b>2</b> ${pct1(r.aw)} <small style="color:var(--dim)">(${odds(r.aw)})</small></span>
+      </div>
+      <div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.7px;margin-top:14px">First half result</div>
+      ${bar(r.h1w,r.h1d,r.h1a)}
+      <div class="pct" style="font-size:13px;margin-top:8px">
+        <span><b>1</b> ${pct1(r.h1w)}</span><span><b>X</b> ${pct1(r.h1d)}</span><span><b>2</b> ${pct1(r.h1a)}</span>
+      </div>
+      <div class="hint">Expected goals — ${esc(f.hname)} ${r.lh.toFixed(2)} · ${esc(f.aname)} ${r.la.toFixed(2)}
+        · before the break ${r.lh1.toFixed(2)} and ${r.la1.toFixed(2)}</div>
+      <div class="hint">${basis}${h1note}</div>
+    </div>
+
+    ${marketCard}
+
+    <div class="ttl">Goal markets</div>
+    <div class="card"><div class="sg">
+      <div><div class="k">Both teams score</div><div class="v">${pct(r.btts)}<small>${odds(r.btts)}</small></div></div>
+      <div><div class="k">Over 2.5 goals</div><div class="v">${pct(r.o25)}<small>${odds(r.o25)}</small></div></div>
+      <div><div class="k">Over 1.5 goals</div><div class="v">${pct(r.o15)}</div></div>
+      <div><div class="k">Over 3.5 goals</div><div class="v">${pct(r.o35)}</div></div>
+      <div><div class="k">${esc(f.hname)} clean sheet</div><div class="v">${pct(r.csH)}</div></div>
+      <div><div class="k">${esc(f.aname)} clean sheet</div><div class="v">${pct(r.csA)}</div></div>
+      <div><div class="k">${esc(f.hname)} both halves</div><div class="v">${pct(r.sbhH)}</div></div>
+      <div><div class="k">${esc(f.aname)} both halves</div><div class="v">${pct(r.sbhA)}</div></div>
+    </div></div>
+
+    <div class="ttl">Most likely scores</div>
+    <div class="card"><div class="sg" style="grid-template-columns:repeat(3,1fr)">
+      ${r.top.map(s=>`<div><div class="k">${s.s}</div><div class="v">${pct1(s.p)}</div></div>`).join('')}
+    </div></div>
+
+    <div class="ttl">Last 45 — head to head profile</div>
+    <div class="card">${compare(H, A, f.hname, f.aname)}</div>
+
+    <div class="note">Home columns use ${esc(f.hname)}'s <b>home</b> record (${H.hn} matches) and away columns use ${esc(f.aname)}'s <b>away</b> record (${A.an} matches), which is what the model prices on.</div>
+
+    <button class="btn alt" onclick='window.__openTeam(${JSON.stringify(String(f.hid))})'>${esc(f.hname)} full profile</button>
+    <button class="btn alt" onclick='window.__openTeam(${JSON.stringify(String(f.aid))})'>${esc(f.aname)} full profile</button>
+  `);
+}
+
+/* First-half figures are rates over the matches that HAVE a half-time
+   score, which is not always all of them. Dividing by every match made
+   a side with missing half-time data look as if it never led or trailed
+   at the break. Older stat blocks do not carry the count, so they fall
+   back to the full window. NaN (no half-time data at all) prints as a
+   dash rather than as 0%. */
+const n1Of  = S => (S.n1 != null ? S.n1 : S.n) || NaN;
+const pctOr = x => Number.isFinite(x) ? pct(x) : '—';
+
+/* side-by-side comparison rows */
+function compare(H, A, hn, an) {
+  const rows = [
+    ['Matches in window', H.n, A.n, v=>v, Math.max(H.n,A.n,1)],
+    ['Avg goals scored', H.gf/Math.max(H.n,1), A.gf/Math.max(A.n,1), v=>v.toFixed(2), 3],
+    ['Avg goals conceded', H.ga/Math.max(H.n,1), A.ga/Math.max(A.n,1), v=>v.toFixed(2), 3],
+    ['Both teams scored', H.btts/Math.max(H.n,1), A.btts/Math.max(A.n,1), pct, 1],
+    ['Clean sheets', H.cs/Math.max(H.n,1), A.cs/Math.max(A.n,1), pct, 1],
+    ['Scored both halves', H.sbh/n1Of(H), A.sbh/n1Of(A), pctOr, 1],
+    ['Failed to score', H.fts/Math.max(H.n,1), A.fts/Math.max(A.n,1), pct, 1],
+    ['Over 2.5 goals', H.o25/Math.max(H.n,1), A.o25/Math.max(A.n,1), pct, 1],
+    ['Win rate', H.w/Math.max(H.n,1), A.w/Math.max(A.n,1), pct, 1],
+    ['Draw rate', H.d/Math.max(H.n,1), A.d/Math.max(A.n,1), pct, 1],
+    ['Loss rate', H.l/Math.max(H.n,1), A.l/Math.max(A.n,1), pct, 1],
+    ['First-half win rate', H.h1w/n1Of(H), A.h1w/n1Of(A), pctOr, 1],
+    ['First-half draw rate', H.h1d/n1Of(H), A.h1d/n1Of(A), pctOr, 1],
+  ];
+  let out = `<div class="cmp">
+    <div class="lbl">Recent form</div>
+    <div class="row">
+      <div class="trk" style="height:auto">
+        <div class="l"><div class="form">${(H.form||'').slice(0,5).split('').reverse().map(c=>`<i class="${c}">${c}</i>`).join('')}</div></div>
+        <div class="r2"><div class="form">${(A.form||'').slice(0,5).split('').map(c=>`<i class="${c}">${c}</i>`).join('')}</div></div>
+      </div>
+    </div></div>`;
+
+  for (const [lbl, a, b, fmt, max] of rows) {
+    const wa = Number.isFinite(a) ? Math.min(a/max,1)*100 : 0, wb = Number.isFinite(b) ? Math.min(b/max,1)*100 : 0;
+    out += `<div class="cmp">
+      <div class="lbl">${esc(lbl)}</div>
+      <div class="row">
+        <div class="n">${fmt(a)}</div>
+        <div class="trk">
+          <div class="l"><i class="f" style="width:${wa}%"></i></div>
+          <div class="r2"><i class="g" style="width:${wb}%"></i></div>
+        </div>
+        <div class="n r">${fmt(b)}</div>
+      </div></div>`;
+  }
+  return out;
+}
+
+/* ════════════════════════════════════════════════════════════
+   7.  TEAM PROFILE
+   ════════════════════════════════════════════════════════════ */
+window.__openTeam = async function (id) {
+  openSheet(`<div class="grab"></div><div class="sh-hd"><div class="t">Loading…</div>
+    <button class="x" onclick="closeSheet()">×</button></div><div class="skel"></div><div class="skel"></div>`);
+  const t = await soft(getTeam(id));
+  if (!t) { openSheet(`<div class="grab"></div><div class="sh-hd"><div class="t">Team</div>
+    <button class="x" onclick="closeSheet()">×</button></div>
+    <div class="empty"><b>No profile stored</b>This team has not been ingested yet.</div>`); return; }
+
+  const ms = unpack(t.m);
+  const s  = ms.length ? PM.profile(ms) : (t.s || null);
+  if (!s || !s.n) { openSheet(`<div class="grab"></div><div class="sh-hd"><div class="t">${esc(t.name)}</div>
+    <button class="x" onclick="closeSheet()">×</button></div>
+    <div class="empty"><b>No matches in window</b>${esc(t.name)} is registered but has no results stored yet.</div>`); return; }
+
+  const d = x => (x/s.n);
+  const d1 = x => pctOr(x / n1Of(s));            // first-half tallies, over matches with a half-time score
+  const g1 = (s.hn1 != null ? (s.h1gf*s.hn1 + s.a1gf*s.an1) : (s.h1gf*s.hn + s.a1gf*s.an)) / n1Of(s);
+  openSheet(`
+    <div class="grab"></div>
+    <div class="sh-hd">
+      ${t.logo?`<img src="${esc(t.logo)}" style="width:26px;height:26px;object-fit:contain" alt="">`:''}
+      <div class="t">${esc(t.name)}</div><button class="x" onclick="closeSheet()">×</button></div>
+
+    <div class="card" style="padding:12px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div><div class="k" style="font-size:10px;color:var(--dim);text-transform:uppercase">Recent form</div>
+        <div class="form">${(s.form||'').split('').map(c=>`<i class="${c}">${c}</i>`).join('')}</div></div>
+        <div style="margin-left:auto;text-align:right">
+          <div style="font-size:10px;color:var(--dim);text-transform:uppercase">Window</div>
+          <div style="font-size:19px;font-weight:700">${s.n}<small style="font-size:11px;color:var(--dim)"> / 45</small></div>
+        </div>
+      </div>
+      <div class="hint">${s.hn} home · ${s.an} away${t.country?` · ${esc(t.country)}`:''}</div>
+    </div>
+
+    <div class="ttl">Results</div>
+    <div class="card"><div class="sg">
+      <div><div class="k">Win</div><div class="v">${pct(d(s.w))}<small>${s.w}</small></div></div>
+      <div><div class="k">Draw</div><div class="v">${pct(d(s.d))}<small>${s.d}</small></div></div>
+      <div><div class="k">Loss</div><div class="v">${pct(d(s.l))}<small>${s.l}</small></div></div>
+      <div><div class="k">First-half win</div><div class="v">${d1(s.h1w)}<small>${s.h1w}</small></div></div>
+      <div><div class="k">First-half draw</div><div class="v">${d1(s.h1d)}<small>${s.h1d}</small></div></div>
+      <div><div class="k">First-half loss</div><div class="v">${d1(s.h1l)}<small>${s.h1l}</small></div></div>
+    </div>${s.n1 != null && s.n1 < s.n ? `<div class="hint" style="padding:0 12px 10px">Half-time scores exist for ${s.n1} of these ${s.n} matches; the first-half figures are over those.</div>` : ''}</div>
+
+    <div class="ttl">Goals</div>
+    <div class="card"><div class="sg">
+      <div><div class="k">Scored / game</div><div class="v">${(s.gf/s.n).toFixed(2)}</div></div>
+      <div><div class="k">Conceded / game</div><div class="v">${(s.ga/s.n).toFixed(2)}</div></div>
+      <div><div class="k">Scored at home</div><div class="v">${s.hgf.toFixed(2)}</div></div>
+      <div><div class="k">Scored away</div><div class="v">${s.agf.toFixed(2)}</div></div>
+      <div><div class="k">Conceded at home</div><div class="v">${s.hga.toFixed(2)}</div></div>
+      <div><div class="k">Conceded away</div><div class="v">${s.aga.toFixed(2)}</div></div>
+    </div></div>
+
+    <div class="ttl">Patterns</div>
+    <div class="card"><div class="sg">
+      <div><div class="k">Both teams scored</div><div class="v">${pct(d(s.btts))}<small>${s.btts}</small></div></div>
+      <div><div class="k">Clean sheets</div><div class="v">${pct(d(s.cs))}<small>${s.cs}</small></div></div>
+      <div><div class="k">Scored both halves</div><div class="v">${d1(s.sbh)}<small>${s.sbh}</small></div></div>
+      <div><div class="k">Failed to score</div><div class="v">${pct(d(s.fts))}<small>${s.fts}</small></div></div>
+      <div><div class="k">Over 2.5 goals</div><div class="v">${pct(d(s.o25))}<small>${s.o25}</small></div></div>
+      <div><div class="k">1st-half goals / game</div><div class="v">${Number.isFinite(g1) ? g1.toFixed(2) : '—'}</div></div>
+      ${s.sot > 0 ? `<div><div class="k">Shots on target / game</div><div class="v">${s.sot.toFixed(1)}</div></div>
+      <div><div class="k">On target against / game</div><div class="v">${s.sotA.toFixed(1)}</div></div>` : ''}
+    </div></div>
+
+    <div class="ttl">Last ${Math.min(ms.length,15)} matches</div>
+    <div class="card">${ms.slice(0,15).map(m=>{
+      const res = m.gf>m.ga?'W':m.gf===m.ga?'D':'L';
+      return `<div class="sr">
+        <div class="form"><i class="${res}">${res}</i></div>
+        <div class="n">${m.h?'':'@ '}${esc(m.o)}</div>
+        <div class="c">${m.hgf != null && m.hga != null ? `${m.hgf}-${m.hga} HT` : '— HT'}</div>
+        <div class="c" style="color:var(--fg);font-weight:700;min-width:30px;text-align:right">${m.gf}-${m.ga}</div>
+      </div>`;
+    }).join('')}</div>
+  `);
+};
+
+/* ════════════════════════════════════════════════════════════
+   8.  TEAM SEARCH
+   ════════════════════════════════════════════════════════════ */
+function wireSearch(inputId, resultsId, onPick) {
+  const inp = document.getElementById(inputId), box = document.getElementById(resultsId);
+  let timer;
+  inp.addEventListener('input', () => {
+    clearTimeout(timer);
+    const v = inp.value.trim();
+    if (v.length < 2) { box.innerHTML=''; return; }
+    timer = setTimeout(async () => {
+      box.innerHTML = '<div class="skel" style="height:44px"></div>';
+      let res = [];
+      try { res = await searchTeams(v); } catch(e){ console.error(e); }
+      if (!res.length) { box.innerHTML = `<div class="empty" style="padding:22px">No team found. Search is case-insensitive and matches from the start of the name.</div>`; return; }
+      box.innerHTML = '<div class="card">' + res.map(t =>
+        `<div class="sr" data-id="${esc(t.id)}">
+           ${t.logo?`<img src="${esc(t.logo)}" loading="lazy" alt="">`:'<div style="width:22px"></div>'}
+           <div class="n">${esc(t.name)}</div>
+           <div class="c">${t.s&&t.s.n?t.s.n+' m':'—'}</div>
+         </div>`).join('') + '</div>';
+      box.querySelectorAll('.sr').forEach(r =>
+        r.onclick = () => onPick(r.dataset.id, res.find(x=>String(x.id)===r.dataset.id), inp, box));
+    }, 280);
+  });
+}
+wireSearch('tsearch','tresults',(id)=>window.__openTeam(id));
+
+/* ════════════════════════════════════════════════════════════
+   9.  CALCULATOR
+   ════════════════════════════════════════════════════════════ */
+function pickFor(side) {
+  return (id, team, inp, box) => {
+    S.calc[side] = { id, name: team.name, logo: team.logo, lid: team.lid };
+    inp.value = team.name;
+    box.innerHTML = '';
+    document.getElementById('cGo').disabled = !(S.calc.h && S.calc.a);
+  };
+}
+wireSearch('cHome','cHomeR', pickFor('h'));
+wireSearch('cAway','cAwayR', pickFor('a'));
+
+document.getElementById('cGo').onclick = async () => {
+  const out = document.getElementById('cOut');
+  out.innerHTML = '<div class="skel"></div><div class="skel"></div>';
+  const [th, ta] = await Promise.all([soft(getTeam(S.calc.h.id)), soft(getTeam(S.calc.a.id))]);
+  if (!th || !ta) { out.innerHTML = `<div class="empty"><b>Missing profile</b>One of these teams has no stored history.</div>`; return; }
+  const H = blockOf(th), A = blockOf(ta);
+  if (!H||!A||!H.n||!A.n) { out.innerHTML = `<div class="empty"><b>Not enough matches</b>Both teams need stored results before the model can price this.</div>`; return; }
+
+  /* A hypothetical matchup has no fixture and therefore no price, so
+     this one stays pure — there is nothing to blend toward. It still
+     needs a real league average rather than null; see statsFor. */
+  const lg = await soft(getLeagueStats(th.lid));
+  const r  = PM.run(H, A, (lg && lg.avg && lg.avg.h > 0) ? lg.avg : S.globalAvg, S.cal);
+
+  out.innerHTML = `
+    <div class="ttl">${esc(S.calc.h.name)} (H) v ${esc(S.calc.a.name)} (A)</div>
+    <div class="card" style="padding:12px">
+      <div class="pbar"><i class="h" style="width:${r.hw*100}%"></i><i class="d" style="width:${r.dr*100}%"></i><i class="a" style="width:${r.aw*100}%"></i></div>
+      <div class="pct" style="font-size:13px;margin-top:8px">
+        <span><b>1</b> ${pct1(r.hw)} <small style="color:var(--dim)">${odds(r.hw)}</small></span>
+        <span><b>X</b> ${pct1(r.dr)} <small style="color:var(--dim)">${odds(r.dr)}</small></span>
+        <span><b>2</b> ${pct1(r.aw)} <small style="color:var(--dim)">${odds(r.aw)}</small></span>
+      </div>
+      <div class="hint">xG ${r.lh.toFixed(2)} – ${r.la.toFixed(2)} · 1st half ${r.lh1.toFixed(2)} – ${r.la1.toFixed(2)}</div>
+    </div>
+    <div class="card"><div class="sg">
+      <div><div class="k">BTTS</div><div class="v">${pct(r.btts)}<small>${odds(r.btts)}</small></div></div>
+      <div><div class="k">Over 2.5</div><div class="v">${pct(r.o25)}<small>${odds(r.o25)}</small></div></div>
+      <div><div class="k">1st half 1</div><div class="v">${pct(r.h1w)}</div></div>
+      <div><div class="k">1st half X</div><div class="v">${pct(r.h1d)}</div></div>
+      <div><div class="k">Home clean sheet</div><div class="v">${pct(r.csH)}</div></div>
+      <div><div class="k">Away clean sheet</div><div class="v">${pct(r.csA)}</div></div>
+    </div></div>
+    <div class="ttl">Most likely scores</div>
+    <div class="card"><div class="sg" style="grid-template-columns:repeat(3,1fr)">
+      ${r.top.map(s=>`<div><div class="k">${s.s}</div><div class="v">${pct1(s.p)}</div></div>`).join('')}
+    </div></div>
+    <div class="ttl">Profiles</div>
+    <div class="card">${compare(H, A, S.calc.h.name, S.calc.a.name)}</div>
+    <div class="note">This treats ${esc(S.calc.h.name)} as the home side regardless of any real fixture. Swap the inputs to price the reverse.</div>`;
+};
+
+/* ════════════════════════════════════════════════════════════
+   10.  ALGORITHMS TAB
+   ════════════════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════════════════════════
+   Strategies tab.
+
+   Opens straight onto results. The Worker runs both strategies by
+   itself, every couple of minutes a slice at a time, and saves what
+   they pick for today, tomorrow and the day after (algo/<date>). It
+   also writes every selection into a ledger before kick-off and grades
+   it afterwards (picks/<date>). Nothing here needs pressing: the lists
+   and the win rates are read when the tab opens.
+   ════════════════════════════════════════════════════════════════ */
+const ALGO_FRESH_H = 4;      // a saved list older than this is replaced by a scan on the phone
+
+const utcDay = (n = 0) => { const d = new Date(); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const selDone = s => s.won === true || s.won === false || s.void === 1;
+function gradeSel(k, gh, ga) {
+  if (!Number.isFinite(gh) || !Number.isFinite(ga)) return null;
+  return k === '1' ? gh > ga : k === 'X' ? gh === ga : k === '2' ? ga > gh
+       : k === 'O25' ? gh + ga > 2.5 : k === 'U25' ? gh + ga < 2.5 : k === 'HTD' ? gh === ga : null;
+}
+function dayLabel(ts) {
+  const d = todayISO(new Date(ts * 1000)), t = todayISO();
+  if (d === t) return 'Today';
+  if (d === shiftDay(t, 1)) return 'Tomorrow';
+  return new Date(ts * 1000).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' });
+}
+
+async function loadBoard() {
+  const dates = [utcDay(-1), utcDay(0), utcDay(1), utcDay(2)];
+  const snaps = await Promise.all(dates.map(d => soft(withTimeout(getDoc(doc(db, 'algo', d)), READ_TIMEOUT, 'saved lists'))));
+  const out = { flipx2: [], htd: [], at: { flipx2: 0, htd: 0 } };
+  for (const sn of snaps) {
+    if (!sn || !sn.exists()) continue;
+    const v = sn.data();
+    out.flipx2.push(...unpack(v.flipx2));
+    out.htd.push(...unpack(v.htd));
+    out.at.flipx2 = Math.max(out.at.flipx2, v.flipAt || 0);
+    out.at.htd = Math.max(out.at.htd, v.htdAt || 0);
+  }
+  return out;
+}
+
+/* The ledger, graded up to the minute: a selection the hourly job has
+   not settled yet is graded here against the latest stored result, so
+   a win shows as soon as the score is in. */
+let ledgerCache = null;
+async function loadLedger(force) {
+  if (!force && ledgerCache && Date.now() - ledgerCache.t < 60000) return ledgerCache.v;
+  const snap = await withTimeout(
+    getDocs(query(collection(db, 'picks'), orderBy(documentId(), 'desc'), limit(40))), READ_TIMEOUT, 'ledger');
+  const days = [];
+  snap.forEach(d => {
+    const v = d.data() || {};
+    /* selections made under the old Flip x2 rule carry no tier and are
+       not part of this record */
+    days.push({ date: d.id, flipx2: unpack(v.flipx2).filter(x => x.tier), htd: unpack(v.htd) });
+  });
+  const openDates = days.filter(d => [...d.flipx2, ...d.htd].some(s => !selDone(s))).map(d => d.date).slice(0, 4);
+  const rowsBy = {};
+  await Promise.all(openDates.map(async date => {
+    const rows = await soft(getDayFixtures(date));
+    rowsBy[date] = new Map((rows || []).map(f => [String(f.id), f]));
+  }));
+  for (const d of days) {
+    const fx = rowsBy[d.date];
+    if (!fx) continue;
+    for (const [key, list] of [['flipx2', d.flipx2], ['htd', d.htd]]) for (const s of list) {
+      if (selDone(s)) continue;
+      const f = fx.get(String(s.fid));
+      if (!f || !FINISHED.has(f.st)) continue;
+      const w = key === 'htd' ? gradeSel('HTD', f.hth, f.hta) : gradeSel(s.k, f.gh, f.ga);
+      if (w === null) continue;
+      s.won = w; s.live = 1;
+      if (key === 'htd') { s.gh = f.hth; s.ga = f.hta; } else { s.gh = f.gh; s.ga = f.ga; }
+    }
+  }
+  const t = () => ({ won: 0, lost: 0, open: 0, pnl: 0, said: 0 });
+  const rate = x => { const n = x.won + x.lost; return { ...x, n, winRate: n ? x.won / n : null, roi: n ? x.pnl / n : null, said: n ? x.said / n : null }; };
+  const F = { all: t(), value: t(), near: t() }, H = { all: t(), priced: t(), model: t() };
+  for (const d of days) {
+    for (const s of d.flipx2) for (const x of [F.all, s.tier === 'value' ? F.value : F.near]) {
+      if (s.won === true) { x.won++; x.pnl += s.price - 1; } else if (s.won === false) { x.lost++; x.pnl -= 1; } else if (!s.void) x.open++;
+    }
+    for (const s of d.htd) for (const x of [H.all, s.priced ? H.priced : H.model]) {
+      if (s.won === true) { x.won++; x.said += s.p || 0; } else if (s.won === false) { x.lost++; x.said += s.p || 0; } else if (!s.void) x.open++;
+    }
+  }
+  const v = { days, flipx2: { all: rate(F.all), value: rate(F.value), near: rate(F.near) },
+                    htd: { all: rate(H.all), priced: rate(H.priced), model: rate(H.model) } };
+  ledgerCache = { t: Date.now(), v };
+  return v;
+}
+
+function recordLine(id, L) {
+  if (!L) return 'Record not available right now.';
+  const r = L[id].all;
+  if (!r.n) return `No graded selections yet${r.open ? ` · ${r.open} waiting on results` : ''}. The record starts with the first one settled.`;
+  const wait = r.open ? ` · ${r.open} waiting` : '';
+  return id === 'flipx2'
+    ? `<b style="color:var(--acc)">${pct1(r.winRate)}</b> won · ${r.won}W ${r.lost}L · <b>${signed(r.roi)}</b> a bet${wait}`
+    : `<b style="color:var(--acc)">${pct1(r.winRate)}</b> won · ${r.won} of ${r.n} · forecast said ${pct1(r.said)}${wait}`;
+}
+
+function savedListHTML(algo, list, at) {
+  const nowSec = Date.now() / 1000;
+  const seen = new Set();
+  const rows = list.filter(x => x && x.f && x.f.ts > nowSec && !isWomens(x.f.lname, x.f.hname, x.f.aname))
+    .filter(x => { const k = x.f.id + '|' + (x.leg ? x.leg.k : 'h'); if (seen.has(k)) return false; seen.add(k); return true; });
+  if (!rows.length) return { html: `<div class="hint" style="padding:10px 0 2px">Nothing selected for the coming days yet. ${
+      algo.id === 'flipx2' ? 'Flip x2 needs 1xBet prices, which are fetched each morning.' : 'HTD lists a match only when its half-time draw is clearly likelier than usual.'}</div>`, rows };
+  rows.sort((a, b) => a.f.ts - b.f.ts);
+  const groups = new Map();
+  for (const x of rows) { const g = dayLabel(x.f.ts); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(x); }
+  const order = algo.id === 'flipx2'
+    ? (a, b) => (algo.sectionOrder(a) - algo.sectionOrder(b)) || (b.ev - a.ev)
+    : (a, b) => (b.prob - a.prob) || (b.priced - a.priced);
+  let html = '', i = 0;
+  const flat = [];
+  for (const [label, xs] of groups) {
+    xs.sort(order);
+    html += `<div class="lgline" style="margin:12px 0 4px;font-weight:700;color:var(--fg)">${esc(label)} · ${xs.length}</div>`;
+    for (const x of xs) {
+      const rr = algo.render(x);
+      const tone = rr.tone === 'flat' ? 'var(--mut)' : 'var(--acc)';
+      const time = new Date(x.f.ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const tag = algo.section ? `<span class="pill" style="margin:0 0 0 6px;padding:1px 7px;font-size:10px">${
+        algo.id === 'flipx2' ? (x.tier === 'value' ? 'value' : 'near fair') : (x.priced ? 'priced' : 'model only')}</span>` : '';
+      html += `<div class="sr" style="align-items:flex-start;cursor:pointer;padding:9px 0" data-s="${i}">
+        <div class="n" style="white-space:normal">
+          <div class="lgline" style="margin:0 0 2px">${esc(x.f.lname || '')} · ${time}${tag}</div>
+          <div style="font-size:13px;font-weight:600">${esc(x.f.hname)} v ${esc(x.f.aname)}</div>
+          <div style="font-size:11px;color:var(--dim);margin-top:3px;line-height:1.45">${esc(rr.sub)}</div>
+        </div>
+        <div style="text-align:right;flex:0 0 auto;padding-left:8px">
+          <div style="font-size:12px;font-weight:700">${esc(rr.pick)}</div>
+          <div style="font-size:15px;color:${tone};font-weight:800;font-variant-numeric:tabular-nums">${rr.headline}</div>
+        </div></div>`;
+      flat.push(x); i++;
+    }
+  }
+  const when = at ? new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+  html += `<div class="hint" style="margin-top:8px">Saved by the server${when ? ' at ' + when : ''}; it runs again by itself about every ninety minutes.${
+    rows.some(x => x.f.prov) ? ' Some of these come from the bookmakers\' card before the fixture feed has released the day.' : ''}</div>`;
+  return { html, rows: flat };
+}
+
+async function renderAlgoList() {
+  const box = document.getElementById('algoList');
+  document.getElementById('algoOut').innerHTML = '';
+  box.innerHTML = ALGOS.map(a => `
+    <div class="card" style="padding:13px" id="algo-${esc(a.id)}">
+      <div style="display:flex;align-items:center;gap:9px">
+        <div style="font-weight:800;font-size:16px;flex:1">${esc(a.name)}</div>
+        ${a.needsOdds ? '<span class="pill" style="margin:0">needs odds</span>' : ''}
+      </div>
+      <div class="arec" style="font-size:13px;margin-top:8px;line-height:1.5">Reading the record…</div>
+      <details style="margin-top:6px"><summary style="font-size:12px;color:var(--dim);cursor:pointer">How it picks</summary>
+        <div style="font-size:12px;color:var(--dim);line-height:1.6;margin-top:6px">${esc(a.blurb)}</div></details>
+      <div class="alist" style="margin-top:4px"><div class="skel"></div></div>
+      <button class="btn alt" data-hist="${esc(a.id)}" style="margin-top:10px">Full history</button>
+      ${a.note ? `<details style="margin-top:8px"><summary style="font-size:12px;color:var(--warn);cursor:pointer">Read this before betting it</summary>
+        <div class="note" style="margin-top:6px">${a.note.replace(/^<b[^>]*>Read this before betting it\.<\/b>\s*/, '')}</div></details>` : ''}
+    </div>`).join('');
+  box.querySelectorAll('button[data-hist]').forEach(b => b.onclick = () => runHistory(b.dataset.hist));
+  if (!dbOK) return;
+
+  const [board, led] = await Promise.all([soft(loadBoard()), soft(loadLedger())]);
+  for (const a of ALGOS) {
+    const card = document.getElementById('algo-' + a.id);
+    if (!card) continue;
+    card.querySelector('.arec').innerHTML = recordLine(a.id, led);
+    const listEl = card.querySelector('.alist');
+    const at = board ? board.at[a.id] : 0;
+    if (board && at && Date.now() - at < ALGO_FRESH_H * 3600e3) {
+      const { html, rows } = savedListHTML(a, board[a.id], at);
+      listEl.innerHTML = html;
+      listEl.querySelectorAll('.sr[data-s]').forEach(el => el.onclick = () => openFixture(rows[+el.dataset.s].f));
+    } else {
+      /* nothing saved yet (straight after an update, say): work it out
+         here instead, so the tab is never empty */
+      runAlgo(a.id, listEl, { auto: true });
+    }
+  }
+}
+
+async function runHistory(id) {
+  const out = document.getElementById('algoOut');
+  const algo = ALGOS.find(a => a.id === id);
+  if (!algo || !dbOK) return;
+  out.innerHTML = `<div class="skel"></div><div class="skel"></div>`;
+  out.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  let L;
+  try { L = await loadLedger(true); }
+  catch (e) { out.innerHTML = `<div class="empty"><b>Could not read the ledger</b>${esc(e.message)}</div>`; return; }
+  const R = L[id];
+  const days = L.days.map(d => ({ date: d.date, sel: d[id] })).filter(d => d.sel.length);
+  if (!R.all.n) {
+    out.innerHTML = `<div class="empty"><b>Nothing graded yet</b>
+      ${R.all.open ? `${R.all.open} selection${R.all.open === 1 ? '' : 's'} recorded and waiting on results. ` : ''}
+      Every selection is written down before kick-off and graded once the match is over${id === 'htd' ? ' — at half-time for this one' : ''}.</div>`;
+    return;
+  }
+  const sign = n => (n >= 0 ? '+' : '') + n.toFixed(2);
+  const cls = n => n > 0 ? 'pos' : n < 0 ? 'neg' : 'flat';
+  const isF = id === 'flipx2';
+  const sub = (name, t, what) => `
+    <div class="cmp"><div class="row" style="gap:10px">
+      <div style="flex:1"><div style="font-size:13px;font-weight:700">${name}</div>
+        <div style="font-size:11px;color:var(--dim)">${what} · ${t.n ? `${t.won}W ${t.lost}L · won ${pct1(t.winRate)}` : 'nothing graded yet'}${t.open ? ` · ${t.open} open` : ''}</div></div>
+      <div class="val ${t.n ? (isF ? cls(t.roi) : (t.winRate >= t.said ? 'pos' : 'neg')) : 'flat'}">${t.n ? (isF ? signed(t.roi) : pct1(t.winRate)) : '—'}</div></div></div>`;
+
+  const settled = days.flatMap(d => d.sel.filter(s => s.won === true || s.won === false).map(s => ({ ...s, date: d.date })))
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 30);
+
+  out.innerHTML = `
+    <div class="ttl">${esc(algo.name)} — results</div>
+    <div class="card" style="padding:14px">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <div style="font-size:30px;font-weight:800;color:var(--acc);font-variant-numeric:tabular-nums">${pct1(R.all.winRate)}</div>
+        <div style="font-size:13px;color:var(--dim)">won · ${R.all.won} of ${R.all.n} graded</div>
+      </div>
+      <div class="sg" style="margin-top:12px">
+        ${isF ? `<div><div class="k">Profit at 1 unit a bet</div><div class="v ${cls(R.all.pnl)}">${sign(R.all.pnl)}<small>units</small></div></div>
+                 <div><div class="k">Return per bet</div><div class="v ${cls(R.all.roi)}">${signed(R.all.roi)}</div></div>`
+              : `<div><div class="k">The forecasts said</div><div class="v">${pct1(R.all.said)}</div></div>
+                 <div><div class="k">Fair odds of that</div><div class="v">${(1 / R.all.said).toFixed(2)}</div></div>`}
+        <div><div class="k">Waiting on results</div><div class="v">${R.all.open}</div></div>
+        <div><div class="k">Days recorded</div><div class="v">${days.length}</div></div>
+      </div>
+      <div class="hint" style="margin-top:10px">Graded up to the latest stored result, so a match shows here within the hour of finishing.</div>
+    </div>
+
+    <div class="ttl">${isF ? 'By kind of selection' : 'By what the forecast was built on'}</div>
+    <div class="card">
+      ${isF ? sub('Value', R.value, '1xBet paying more than the market says') + sub('Close to fair', R.near, 'the rest of the list')
+            : sub('Bookmaker prices', R.priced, 'forecast built from the prices') + sub('Model only', R.model, 'no price for the match')}
+    </div>
+    <div class="note">${isF
+      ? 'The right-hand figure is the return per unit staked. If the price comparison is doing its job, Value should come out clearly ahead of Close to fair over a few hundred selections. A few dozen prove nothing either way.'
+      : 'HTD has no price to settle against, so the measure is honesty: over enough matches the share that are level at half-time should match what the forecasts said. Green means it is beating its own forecast. To profit, a selection still has to be backed above its fair odds.'}</div>
+
+    <div class="ttl">By day</div>
+    <div class="card">
+      ${days.slice(0, 21).map(d => {
+        const st = d.sel.filter(s => s.won === true || s.won === false);
+        const w = st.filter(s => s.won).length;
+        const waiting = d.sel.filter(s => !selDone(s)).length;
+        const right = isF ? (st.length ? sign(st.reduce((a, s) => a + (s.won ? s.price - 1 : -1), 0)) : '—') : (st.length ? `${w}/${st.length}` : '—');
+        return `<div class="cmp"><div class="row" style="gap:10px">
+          <div style="width:88px;font-size:12px;color:var(--dim)">${esc(d.date)}</div>
+          <div style="flex:1;font-size:12px">${st.length ? `${w} of ${st.length} won` : ''}${waiting ? `${st.length ? ' · ' : ''}${waiting} waiting` : ''}</div>
+          <div class="val ${isF && st.length ? cls(st.reduce((a, s) => a + (s.won ? s.price - 1 : -1), 0)) : 'flat'}">${right}</div>
+        </div></div>`;
+      }).join('')}
+    </div>
+
+    <div class="ttl">Last graded</div>
+    <div class="card">
+      ${settled.map(s => `
+        <div class="cmp"><div class="row" style="gap:10px">
+          <div style="flex:1">
+            <div style="font-size:13px">${esc(s.home)} v ${esc(s.away)}</div>
+            <div style="font-size:11px;color:var(--dim)">${esc(s.date)} · ${esc(s.lname || '')} · ${isF
+              ? `${esc(s.label)} @ ${s.price.toFixed(2)} · fair ${(1 / s.fair).toFixed(2)} · ${s.tier === 'value' ? 'value' : 'near fair'} ${signed(s.ev)}`
+              : `forecast ${pct1(s.p)} · fair ${(1 / s.p).toFixed(2)}${s.priced ? '' : ' · model only'}`}</div>
+          </div>
+          <div style="font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums">${isF ? '' : 'HT '}${s.gh ?? '?'}–${s.ga ?? '?'}</div>
+          <div class="val ${s.won ? 'pos' : 'neg'}">${isF ? (s.won ? '+' + (s.price - 1).toFixed(2) : '−1.00') : (s.won ? 'won' : 'lost')}</div>
+        </div></div>`).join('') || '<div class="hint" style="padding:12px">Nothing graded yet.</div>'}
+    </div>
+
+    <div class="note">Every selection here was written down by the server before kick-off${isF ? ', at the price 1xBet was showing when prices were fetched,' : ''}
+      and graded on the ${isF ? 'ninety-minute' : 'half-time'} score. It is a record of what the rule chose, not of bets you placed.</div>`;
+}
+
+/* Scans today and the next three days — the forward half of the
+   retention window — rather than only the date shown on the matches
+   tab, because a strategy wants the whole upcoming card. */
+async function runAlgo(id, target, opts = {}) {
+  const algo = ALGOS.find(a => a.id === id);
+  const out = target || document.getElementById('algoOut');
+  if (!algo) return;
+  if (!dbOK) { out.innerHTML = `<div class="empty"><b>Firebase not configured</b></div>`; return; }
+
+  out.innerHTML = `<div class="note">Scanning the next four days…</div><div class="skel"></div><div class="skel"></div>`;
+
+  const dates = [0, 1, 2, 3].map(n => shiftDay(todayISO(), n));
+  const items = [];
+  const nowSec = Date.now() / 1000;
+  let scanned = 0, noStats = 0, noOdds = 0;
+
+  for (const date of dates) {
+    let fx = [];
+    try { fx = (await getDayFixtures(date)) || []; } catch { continue; }
+    const prices = await soft(getOdds(date));
+    /* the stored status can be twenty minutes old, so the kick-off time
+       is checked as well */
+    const pending = fx.filter(f => !FINISHED.has(f.st) && !LIVE.has(f.st) && (!f.ts || f.ts > nowSec));
+    scanned += pending.length;
+
+    const scoredRows = await Promise.all(pending.map(async f => {
+      try {
+        const od = oddsFor(prices, f);
+        /* A strategy that runs on prices alone does not need the teams'
+           history, and should not lose a match for the lack of it. */
+        if (algo.needsOdds) return od ? { f: { ...f, date }, od } : { noOdds: true };
+        const { H, A, avg } = await statsFor(f);
+        if (!H || !A || H.n < MIN_MATCHES || A.n < MIN_MATCHES) return { skip: true };
+        const sc = scoreFixture(H, A, avg, prices, f);
+        return { ...sc, f: { ...f, date } };
+      } catch { return { skip: true }; }
+    }));
+
+    for (const x of scoredRows) {
+      if (x.skip) { noStats++; continue; }
+      if (x.noOdds) { noOdds++; continue; }
+      items.push(x);
+    }
+  }
+
+  if (!items.length) {
+    out.innerHTML = `<div class="empty"><b>Nothing to work with</b>
+      Scanned ${scanned} upcoming match${scanned === 1 ? '' : 'es'}.
+      ${noStats ? `${noStats} had too little team history. ` : ''}
+      ${noOdds ? `${noOdds} had no bookmaker price stored — prices are fetched once a day, in the morning, for twelve leagues.` : ''}</div>`;
+    return;
+  }
+
+  let picks = algo.run(items, algo.params);
+  if (!picks.length) {
+    const need = typeof algo.requirement === 'function'
+      ? algo.requirement(algo.params) : 'No match met its conditions.';
+    const why = typeof algo.empty === 'function' ? algo.empty(items) : '';
+    out.innerHTML = `<div class="empty"><b>No selection fits</b>
+      ${items.length} match${items.length === 1 ? '' : 'es'} looked at, none met the conditions.
+      ${esc(why)} ${esc(need)}</div>`;
+    return;
+  }
+
+  /* group into the strategy's own sections, keeping its order inside each */
+  if (algo.sectionOrder) {
+    picks = picks.map((x, i) => [x, i])
+      .sort((a, b) => algo.sectionOrder(a[0]) - algo.sectionOrder(b[0]) || a[1] - b[1]).map(x => x[0]);
+  }
+  const shown = picks.slice(0, 30);
+
+  const dayOf = x => new Date(x.f.date + 'T12:00:00Z')
+    .toLocaleDateString(undefined, { weekday:'short', day:'numeric', month:'short', timeZone:'UTC' });
+  const timeOf = x => x.f.ts
+    ? new Date(x.f.ts*1000).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}) : '';
+
+  let html = '', last = null;
+  shown.forEach((x, i) => {
+    const sec = algo.section ? algo.section(x) : '';
+    if (sec !== last) {
+      if (last !== null) html += `</div>`;
+      html += `<div class="ttl">${esc(sec || algo.name)}</div><div class="card">`;
+      last = sec;
+    }
+    const rr = algo.render(x);
+    const tone = rr.tone === 'flat' ? 'var(--mut)' : 'var(--acc)';
+    html += `<div class="sr" style="align-items:flex-start;cursor:pointer" data-i="${i}">
+      <div class="n" style="white-space:normal">
+        <div class="lgline" style="margin:0 0 2px">${esc(x.f.lname||'')} · ${dayOf(x)} ${timeOf(x)}</div>
+        <div style="font-size:13px;font-weight:600">${esc(x.f.hname)} v ${esc(x.f.aname)}</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:3px;line-height:1.45">${esc(rr.sub)}</div>
+      </div>
+      <div style="text-align:right;flex:0 0 auto;padding-left:8px">
+        <div style="font-size:12px;font-weight:700">${esc(rr.pick)}</div>
+        <div style="font-size:15px;color:${tone};font-weight:800;font-variant-numeric:tabular-nums">${rr.headline}</div>
+      </div>
+    </div>`;
+  });
+  if (last !== null) html += `</div>`;
+
+  html += `<div class="note">Looked at ${scanned} upcoming matches over four days; ${items.length} could be assessed;
+    ${picks.length} met the rule${picks.length > shown.length ? `, the first ${shown.length} shown` : ''}.${
+    noOdds ? ` ${noOdds} had no stored price.` : ''}${noStats ? ` ${noStats} had too little history.` : ''}</div>`;
+  if (algo.note && !opts.auto) html += `<div class="note">${algo.note}</div>`;
+  if (opts.auto) html += `<div class="hint" style="margin-top:8px">Worked out on this phone — the server's saved list has not come in yet.</div>`;
+
+  out.innerHTML = html;
+  out.querySelectorAll('.sr[data-i]').forEach(el => {
+    el.onclick = () => openFixture(shown[+el.dataset.i].f);
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   11.  NAV + BOOT
+   ════════════════════════════════════════════════════════════ */
+/* ---- team search ---- */
+{
+  const inp = document.getElementById('msearch');
+  let t;
+  inp.addEventListener('input', () => {
+    clearTimeout(t);
+    t = setTimeout(() => { S.query = inp.value; renderFixtures(); }, 220);
+  });
+}
+
+/* ---- bookmaker coverage ----
+   The league list lives in Firestore at config/leagues so it can be
+   edited without redeploying. If the document is missing the toggle
+   hides itself rather than filtering everything away. */
+async function loadBookLeagues() {
+  const wrap = document.getElementById('bookWrap');
+  if (!dbOK) { wrap.style.display = 'none'; return; }
+  try {
+    const d = await withTimeout(getDoc(doc(db, 'config', 'leagues')), 6000, 'leagues');
+    const ids = d.exists() ? (d.data().ids || []) : null;
+    if (!ids || !ids.length) { wrap.style.display = 'none'; return; }
+    S.bookLeagues = new Set(ids.map(String));
+    document.getElementById('bookCount').textContent = `${ids.length} leagues`;
+    try { S.bookOnly = localStorage.getItem('gp_bookonly') === '1'; } catch {}
+    document.getElementById('bookOnly').checked = S.bookOnly;
+  } catch { wrap.style.display = 'none'; }
+}
+
+/* ---- what has been measured ----
+   meta/model holds two things the engine cannot know by itself:
+     avg   the scoring rates across every stored league, written by the
+           bundles job. A league with no average of its own uses this
+           instead of the constants inside the engine.
+     cal   the corrections the backtest page fitted to real results.
+   Both are optional. Without them the engine runs on its own constants,
+   uncorrected — less accurate, never broken. */
+async function loadModel() {
+  if (!dbOK) return;
+  const parse = x => { if (typeof x !== 'string') return x || null; try { return JSON.parse(x); } catch { return null; } };
+  try {
+    const d = await withTimeout(getDoc(doc(db, 'meta', 'model')), 6000, 'model');
+    if (!d.exists()) return;
+    const v = d.data();
+    const avg = parse(v.avg);
+    if (avg && avg.h > 0 && avg.a > 0) S.globalAvg = avg;
+    const cal = parse(v.cal);
+    if (cal && cal.m && typeof cal.m === 'object') S.cal = cal;
+  } catch { /* the engine's own constants remain the fallback */ }
+}
+
+document.getElementById('bookOnly').onchange = e => {
+  S.bookOnly = e.target.checked;
+  try { localStorage.setItem('gp_bookonly', S.bookOnly ? '1' : '0'); } catch {}
+  renderFixtures();
+};
+
+document.querySelectorAll('#sortSeg button').forEach(b => b.onclick = () => {
+  if (S.sort === b.dataset.s) return;
+  S.sort = b.dataset.s;
+  document.querySelectorAll('#sortSeg button').forEach(x => x.classList.toggle('on', x === b));
+  renderFixtures();
+});
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+  document.getElementById('v-'+b.dataset.v).classList.add('on');
+  document.querySelector('header .dates').style.display = b.dataset.v==='matches' ? 'flex' : 'none';
+  if (b.dataset.v === 'info') loadMeta();
+  if (b.dataset.v === 'algo') renderAlgoList();
+  window.scrollTo(0,0);
+});
+
+async function loadMeta() {
+  const el = document.getElementById('meta');
+  if (!dbOK) { el.textContent = 'Firebase not configured.'; return; }
+  try {
+    const d = await withTimeout(getDoc(doc(db,'meta','sync')), READ_TIMEOUT, 'sync');
+    if (!d.exists()) { el.textContent = 'No sync record yet — the first hourly run has not happened.'; return; }
+    const v = d.data();
+    const cal = S.cal;
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr auto;gap:7px 12px">
+        <span>Last fixtures pull</span><b style="color:var(--fg)">${esc(v.lastPull||'—')}</b>
+        <span>Last results digest</span><b style="color:var(--fg)">${esc(v.lastDigest||'—')}</b>
+        <span>Teams tracked</span><b style="color:var(--fg)">${v.teamCount ?? '—'}</b>
+        <span>Matches ingested</span><b style="color:var(--fg)">${v.matchCount ?? '—'}</b>
+        <span>Pending queue</span><b style="color:var(--fg)">${v.pending ?? '—'}</b>
+        <span>API calls today</span><b style="color:var(--fg)">${v.apiToday ?? '—'} / 100</b>
+        <span>League averages</span><b style="color:var(--fg)">${S.globalAvg ? 'measured' : 'built-in'}</b>
+        <span>Corrections from real results</span><b style="color:var(--fg)">${cal ? `${cal.n} matches${cal.at ? ' · ' + esc(String(cal.at).slice(0,10)) : ''}` : 'none yet'}</b>
+      </div>
+      ${cal ? '' : `<div class="hint" style="margin-top:10px">The model has not been checked against real results yet. Open <b>/backtest</b> on this site, run it, and save what it measures.</div>`}`;
+  } catch { el.textContent = 'Could not read sync metadata.'; }
+}
+
+renderDates();
+/* Both run before the first render: the league averages and the
+   corrections change every probability on the card, so painting without
+   them would show one set of numbers and then quietly replace them with
+   another. Each is raced against a deadline — an unanswered read used to
+   hold the whole page on its placeholders for good. */
+Promise.all([loadBookLeagues(), loadModel()]).then(renderFixtures, renderFixtures);
+</script>
+</body>
+</html>
