@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GoalProb diagnostics</title>
+<style>
+  :root{--bg:#0b0f14;--bg2:#121820;--bg3:#1a222d;--line:#232d3a;--fg:#e8eef5;
+        --mut:#8b9bb0;--dim:#5d6b7e;--acc:#2dd4a7;--bad:#f4525f;--warn:#f5a524}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);padding:16px 12px 40px;
+       font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:720px;margin:0 auto}
+  h1{font-size:19px;margin:0 0 4px}
+  h1 span{color:var(--acc)}
+  p.sub{color:var(--dim);font-size:12px;margin:0 0 16px}
+  button{width:100%;background:var(--acc);color:#04231b;border:0;border-radius:8px;
+         padding:12px;font:inherit;font-weight:700;cursor:pointer;margin-bottom:10px}
+  button.alt{background:var(--bg3);color:var(--fg)}
+  button:disabled{opacity:.45}
+  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}
+  th,td{text-align:left;padding:7px 5px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .slow{color:var(--bad);font-weight:700}
+  .mid{color:var(--warn)}
+  .ok{color:var(--acc)}
+  .zero{color:var(--bad);font-weight:700}
+  h2{font-size:13px;margin:22px 0 2px;color:var(--fg)}
+  pre{background:#060a0e;border:1px solid var(--line);border-radius:8px;padding:11px;
+      font-size:11px;line-height:1.55;overflow:auto;white-space:pre-wrap;word-break:break-word;
+      color:var(--mut);margin:8px 0 0}
+  .note{font-size:12px;color:var(--dim);line-height:1.6;background:var(--bg2);
+        border:1px solid var(--line);border-radius:8px;padding:11px;margin-top:12px}
+  .verdict{font-size:13px;line-height:1.6;border-radius:8px;padding:12px;margin-top:14px;
+           border:1px solid var(--line);background:var(--bg2)}
+  .verdict b{color:var(--acc)}
+  .verdict.bad b{color:var(--bad)}
+</style>
+</head>
+<body><div class="wrap">
+
+<h1>Goal<span>Prob</span> diagnostics</h1>
+<p class="sub">Fixtures come from API-Football, prices from The Odds API. Each side builds its own lookup key from the team names. This checks whether those keys actually meet.</p>
+
+<button id="go">Check odds coverage</button>
+<button id="ratings" class="alt">Check ratings, corrections and imports</button>
+<button id="timing" class="alt">Time the reads instead</button>
+
+<div id="out"></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+import { getFirestore, doc, getDoc, collection, query, where, getDocs, limit }
+  from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import { PM } from './model.mjs';
+
+const firebaseConfig = {
+  apiKey:            "AIzaSyCXQa90edRos4BzoK4md2OYeq_ogYoesjQ",
+  authDomain:        "zxtvfb-bb48a.firebaseapp.com",
+  projectId:         "zxtvfb-bb48a",
+  storageBucket:     "zxtvfb-bb48a.firebasestorage.app",
+  messagingSenderId: "982389556203",
+  appId:             "1:982389556203:web:6013bd601a9d7cf19f0fae"
+};
+const db = getFirestore(initializeApp(firebaseConfig));
+
+const out = document.getElementById('out');
+const todayISO = (d = new Date()) =>
+  new Date(d.getTime() - d.getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const shift = (iso, n) => { const d = new Date(iso+'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); };
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const unpack    = v => { try { return typeof v === 'string' ? JSON.parse(v) : (v || []); } catch { return []; } };
+const unpackObj = v => { try { return typeof v === 'string' ? JSON.parse(v) : (v || {}); } catch { return {}; } };
+
+/* ════════════════════════════════════════════════════════════════
+   Does each date's fixtures meet that date's prices?
+   ════════════════════════════════════════════════════════════════ */
+document.getElementById('go').onclick = async () => {
+  const btn = document.getElementById('go');
+  btn.disabled = true;
+  out.innerHTML = '<p class="sub">reading seven days…</p>';
+
+  const t0 = todayISO();
+  const dates = [-3,-2,-1,0,1,2,3].map(n => shift(t0, n));
+  const rows = [];
+  let worst = null;
+
+  for (const date of dates) {
+    const r = { date, fx: 0, withKey: 0, prices: 0, matched: 0, mine: 0, sharp: 0, ou: 0,
+                leagues: new Set(), fxKeys: [], oddKeys: [], err: '' };
+    try {
+      const snap = await getDocs(query(collection(db,'fixtures'), where('date','==',date)));
+      const fixtures = [];
+      snap.forEach(d => fixtures.push(...unpack(d.data().f)));
+      r.fx = fixtures.length;
+      r.withKey = fixtures.filter(f => f.k).length;
+      fixtures.forEach(f => { if (f.lname) r.leagues.add(f.lname); });
+
+      const od = await getDoc(doc(db,'odds',date));
+      const prices = od.exists() ? unpackObj(od.data().o) : {};
+      r.prices = Object.keys(prices).length;
+      r.matched = fixtures.filter(f => f.k && prices[f.k]).length;
+      for (const p of Object.values(prices)) {
+        if (Array.isArray(p.x)) r.mine++;
+        if (p.bk === 'pinnacle') r.sharp++;
+        if (p.ou) r.ou++;
+      }
+
+      /* When prices exist on both sides but nothing lines up, the key is
+         the thing to look at — so capture a sample of each. */
+      if (r.prices > 0 && r.matched === 0 && r.withKey > 0) {
+        r.fxKeys  = fixtures.filter(f => f.k).slice(0, 6)
+                      .map(f => `${f.k}   (${f.hname} v ${f.aname})`);
+        r.oddKeys = Object.keys(prices).slice(0, 6);
+        if (!worst) worst = r;
+      }
+    } catch (e) { r.err = e.message; }
+    rows.push(r);
+  }
+
+  const cell = (v, bad) => `<td class="n ${bad ? 'zero' : v ? 'ok' : ''}">${v}</td>`;
+  let html = `<table>
+    <tr><th>date</th><th class="n">fixtures</th><th class="n">with key</th>
+        <th class="n">prices</th><th class="n">matched</th><th class="n">1xBet</th>
+        <th class="n">Pinnacle</th><th class="n">O/U</th></tr>` +
+    rows.map(r => `<tr>
+      <td>${r.date === t0 ? '<b>'+r.date+'</b>' : r.date}${r.err ? '<br><span class="zero">ERR '+esc(r.err)+'</span>' : ''}</td>
+      ${cell(r.fx)}
+      ${cell(r.withKey, r.fx > 0 && r.withKey === 0)}
+      ${cell(r.prices)}
+      ${cell(r.matched, r.prices > 0 && r.matched === 0)}
+      ${cell(r.mine, r.prices > 0 && r.mine === 0)}
+      ${cell(r.sharp)}
+      ${cell(r.ou)}
+    </tr>`).join('') + `</table>
+    <div class="note"><b>1xBet</b> counts the stored prices that include 1xBet's own odds — Flip x2 can only pick
+      from those. <b>Pinnacle</b> counts those whose fair price comes from Pinnacle rather than the middle of the
+      market. <b>O/U</b> counts those with an over/under 2.5 price; three leagues get one each day, in rotation.</div>`;
+
+  /* ---- read the table out loud, so the next step is not a guess ---- */
+  const anyFx      = rows.some(r => r.fx > 0);
+  const anyPrices  = rows.some(r => r.prices > 0);
+  const anyMatched = rows.some(r => r.matched > 0);
+  const noKeys     = rows.some(r => r.fx > 0 && r.withKey === 0);
+
+  let verdict, bad = true;
+  if (!anyFx) {
+    verdict = `<b>No fixtures stored at all.</b> Nothing else can work until Pull fixtures runs.`;
+  } else if (noKeys) {
+    verdict = `<b>Fixtures are missing their odds key.</b> They were written by an older
+               build — press Pull fixtures to rewrite them.`;
+  } else if (!anyPrices) {
+    verdict = `<b>No prices stored on any date.</b> The sweep is not reaching these leagues,
+               or is failing before it writes. Check the Fetch odds log for
+               <i>leaguesThisRun</i> and <i>nextRunStartsAt</i>.`;
+  } else if (!anyMatched) {
+    verdict = `<b>Prices exist but match nothing.</b> Both sides built a key and the keys
+               disagree, so every lookup misses. The samples below are the evidence —
+               send them back.`;
+  } else {
+    bad = false;
+    const dead = rows.filter(r => r.fx > 0 && r.matched === 0 && r.prices === 0);
+    verdict = `<b>Matching works</b> on ${rows.filter(r => r.matched > 0).length} of 7 days.` +
+      (dead.length ? ` ${dead.length} day(s) have fixtures but no prices — those leagues are
+       outside the 12-league sweep, which is expected rather than broken.` : '');
+  }
+  html += `<div class="verdict ${bad ? 'bad' : ''}">${verdict}</div>`;
+
+  if (worst) {
+    html += `<h2>${worst.date} — keys that should have met</h2>
+      <pre>FIXTURE KEYS (from API-Football names)
+${worst.fxKeys.map(esc).join('\n')}
+
+PRICE KEYS (from The Odds API names)
+${worst.oddKeys.map(esc).join('\n')}</pre>`;
+  }
+
+  /* Which leagues have prices anywhere — tells us what the sweep reached */
+  const sweptLeagues = new Set();
+  rows.forEach(r => { if (r.matched > 0) r.leagues.forEach(l => sweptLeagues.add(l)); });
+  if (sweptLeagues.size) {
+    html += `<h2>leagues with working prices</h2><pre>${esc([...sweptLeagues].sort().join('\n'))}</pre>`;
+  }
+
+  out.innerHTML = html;
+  btn.disabled = false;
+};
+
+/* ════════════════════════════════════════════════════════════════
+   Are the ratings from closing prices reaching the forecasts? Are the
+   corrections stored? Did every imported team find its match?
+   ════════════════════════════════════════════════════════════════ */
+document.getElementById('ratings').onclick = async () => {
+  const btn = document.getElementById('ratings');
+  btn.disabled = true;
+  out.innerHTML = '<p class="sub">reading the next three days, their league bundles and the model record…</p>';
+  const days = n => Math.round(n);
+  const when = ms => { const m = Math.round((Date.now() - ms) / 6e4);
+    return m < 90 ? `${m} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
+  const t0 = todayISO();
+  let html = '';
+  try {
+    /* ---- the stored model record ---- */
+    const parse = x => { if (typeof x !== 'string') return x || null; try { return JSON.parse(x); } catch { return null; } };
+    const mm = await getDoc(doc(db, 'meta', 'model'));
+    const mv = mm.exists() ? mm.data() : {};
+    const cal = parse(mv.cal), avg = parse(mv.avg);
+    const tables = cal ? ['m', 'g', 'r', 'mi', 'm1'].filter(t => cal[t]).map(t => `${t}: ${Object.keys(cal[t]).length}`).join(', ') : '';
+    html += `<h2>Model record</h2><table>
+      <tr><td>Cross-league average</td><td class="n ${avg ? 'ok' : 'zero'}">${avg ? 'stored' : 'MISSING'}</td>
+          <td style="color:var(--dim)">${avg ? `home ${avg.h} · away ${avg.a} goals a game` : 'run Build all bundles on the admin page'}</td></tr>
+      <tr><td>Corrections from the backtest</td><td class="n ${cal ? 'ok' : 'mid'}">${cal ? 'stored' : 'none'}</td>
+          <td style="color:var(--dim)">${cal ? `fitted on ${cal.n} matches${cal.at ? ', ' + esc(String(cal.at).slice(0, 10)) : ''} · lines ${esc(tables || 'none')}${cal.wr != null ? ' · rating weight ' + cal.wr : ''}${cal.shotMix ? ' · total shots on' : ''}`
+                                                       : 'open /backtest, run it and save'}</td></tr>
+    </table>`;
+
+    /* ---- the next three days ---- */
+    const dates = [0, 1, 2].map(n => shift(t0, n));
+    const fixtures = [];
+    for (const date of dates) {
+      const snap = await getDocs(query(collection(db, 'fixtures'), where('date', '==', date)));
+      snap.forEach(d => fixtures.push(...unpack(d.data().f).filter(f => !['FT', 'AET', 'PEN'].includes(f.st))));
+    }
+    const byLeague = new Map();
+    for (const f of fixtures) {
+      if (!f.lid) continue;
+      if (!byLeague.has(f.lid)) byLeague.set(f.lid, { name: [f.ctry, f.lname].filter(Boolean).join(' · '), fx: [] });
+      byLeague.get(f.lid).fx.push(f);
+    }
+    const rowsOut = [];
+    let total = 0, ratedTotal = 0;
+    const now = Date.now();
+    for (const [lid, L] of byLeague) {
+      const b = await getDoc(doc(db, 'cache', 'league_' + lid));
+      const bundle = b.exists() ? b.data() : null;
+      const teams = bundle ? unpackObj(bundle.teams) : {};
+      let rated = 0, both = 0, oldest = 0;
+      for (const f of L.fx) {
+        const H = teams[f.hid], A = teams[f.aid];
+        if (!H || !A) continue;
+        both++;
+        const w = PM.lambdas(H, A, bundle.avg || null, cal || undefined).rated || 0;
+        if (w >= 0.5) {
+          rated++;
+          oldest = Math.max(oldest, (now - Date.parse(String(H.mr.t < A.mr.t ? H.mr.t : A.mr.t) + 'T12:00:00Z')) / 864e5);
+        }
+      }
+      total += L.fx.length; ratedTotal += rated;
+      rowsOut.push({ name: L.name, n: L.fx.length, both, rated, oldest, bundle: !!bundle });
+    }
+    rowsOut.sort((a, b) => b.rated - a.rated || b.n - a.n);
+    const shown = rowsOut.filter(r => r.rated).concat(rowsOut.filter(r => !r.rated).slice(0, 12));
+    html += `<h2>Ratings from closing prices, next three days</h2>
+      <p class="sub" style="margin:2px 0 0">${ratedTotal} of ${total} upcoming matches have both sides rated. Only the twenty
+        leagues in the results import can be rated; every other league runs on goals and shots alone.</p>
+      <table><tr><th>league</th><th class="n">matches</th><th class="n">both in bundle</th><th class="n">rated</th><th class="n">rating age</th></tr>
+      ${shown.map(r => `<tr><td>${esc(r.name)}${r.bundle ? '' : ' <span class="zero">no bundle</span>'}</td>
+        <td class="n">${r.n}</td><td class="n">${r.both}</td><td class="n ${r.rated ? 'ok' : ''}">${r.rated}</td>
+        <td class="n ${r.oldest > 10 ? 'mid' : ''}">${r.rated ? days(r.oldest) + ' d' : '—'}</td></tr>`).join('')}
+      </table>
+      ${rowsOut.length > shown.length ? `<p class="sub">…and ${rowsOut.length - shown.length} more leagues with no ratings.</p>` : ''}
+      <div class="note">A rating counts in full for ten days after the newest match it was fitted on, then fades. The
+        current season's results are re-read every hour, one league at a time, so in a busy week ratings stay a few
+        days old. Over ten days usually means the league is on a break — or the hourly refresh is not running.</div>`;
+
+    /* ---- imported teams that never matched an API-Football team ---- */
+    const orph = await getDocs(query(collection(db, 'teams'), where('lid', '==', 0), limit(60)));
+    const list = [];
+    orph.forEach(d => { const v = d.data(); if (v.fdCode) list.push(`${v.fdCode.padEnd(4)} ${v.name}`); });
+    list.sort();
+    html += `<h2>Imported teams with no match</h2>
+      ${list.length ? `<p class="sub" style="margin:2px 0 0">${list.length}${list.length >= 60 ? '+' : ''} team${list.length === 1 ? '' : 's'} from the results files
+        could not be matched to a team in the fixture feed by name. Their history and rating sit on a separate record the
+        forecasts never read. Send this list back and the names can be added.</p><pre>${esc(list.join('\n'))}</pre>`
+        : `<p class="sub" style="margin:2px 0 0" class="ok">None — every imported team found its match.</p>`}`;
+
+    /* ---- the jobs' own bookkeeping ---- */
+    const [h, o, s, al] = await Promise.all([getDoc(doc(db, 'meta', 'history')), getDoc(doc(db, 'meta', 'odds')),
+                                             getDoc(doc(db, 'meta', 'sync')), getDoc(doc(db, 'meta', 'algos'))]);
+    const hv = h.exists() ? h.data() : {}, ov = o.exists() ? o.data() : {}, sv = s.exists() ? s.data() : {};
+    const ap = al.exists() ? parse(al.data().pass) : null;
+    html += `<h2>Jobs</h2><table>
+      <tr><td>Fixtures pull</td><td style="color:var(--dim)">${esc(sv.lastPull || '—')}</td></tr>
+      <tr><td>Results digest</td><td style="color:var(--dim)">${esc(sv.lastDigest || '—')}</td></tr>
+      <tr><td>Hourly results refresh</td><td style="color:var(--dim)">${hv.au ? when(hv.au) + ` · next league slot ${hv.ali ?? 0}` : 'has not run yet'}</td></tr>
+      <tr><td>Full results import</td><td style="color:var(--dim)">${hv.u ? when(hv.u) : '—'}</td></tr>
+      <tr><td>Strategies (Flip x2, HTD)</td><td style="color:var(--dim)">${ap ? (ap.step === 'done'
+            ? `last full pass ${when(ap.startedAt)}, next by itself within 90 min`
+            : `pass under way: ${esc(ap.step)}${ap.step === 'slice' ? ` ${ap.si}/${ap.slices.length}` : ''}, started ${when(ap.startedAt)}`)
+          : 'has not run yet — it starts by itself within two minutes of the update'}</td></tr>
+      <tr><td>Day after tomorrow</td><td style="color:var(--dim)">${String(sv.plus2 || '').endsWith(':ok') ? 'the fixture feed reaches it'
+            : String(sv.plus2 || '').endsWith(':no') ? 'beyond the feed — provisional list from the bookmakers\' card' : 'not tried yet'}</td></tr>
+      <tr><td>Odds sweep</td><td style="color:var(--dim)">${esc(ov.lastSweep || '—')}${ov.month ? ` · ${esc(ov.month)}: ${ov.used || 0} credits used` : ''}${ov.remaining != null && ov.remaining >= 0 ? ', ' + ov.remaining + ' left' : ''}</td></tr>
+    </table>`;
+  } catch (e) {
+    html += `<div class="verdict bad"><b>Stopped:</b> ${esc(e.message)}</div>`;
+  }
+  out.innerHTML = html;
+  btn.disabled = false;
+};
+
+/* ════════════════════════════════════════════════════════════════
+   The original timing pass, kept for when something is slow.
+   ════════════════════════════════════════════════════════════════ */
+document.getElementById('timing').onclick = async () => {
+  const btn = document.getElementById('timing');
+  btn.disabled = true;
+  const rows = [];
+  const kb = n => (n/1024).toFixed(1) + ' KB';
+  const cls = ms => ms > 3000 ? 'slow' : ms > 800 ? 'mid' : 'ok';
+  const size = o => { try { return JSON.stringify(o).length; } catch { return 0; } };
+  const render = () => { out.innerHTML = `<table>
+      <tr><th>step</th><th class="n">time</th><th class="n">size</th><th>detail</th></tr>
+      ${rows.map(r => `<tr><td>${r.step}</td>
+        <td class="n ${cls(r.ms)}">${r.ms} ms</td>
+        <td class="n">${r.bytes ? kb(r.bytes) : '—'}</td>
+        <td style="color:var(--dim)">${esc(r.detail || '')}</td></tr>`).join('')}</table>`; };
+  const add = (step, ms, bytes, detail) => { rows.push({ step, ms: Math.round(ms), bytes, detail }); render(); };
+  const timed = async (step, fn) => {
+    const t = performance.now();
+    let v = null, bytes = 0, note = '';
+    try { const r = await fn(); v = r && r.value !== undefined ? r.value : r;
+          bytes = r && r.bytes !== undefined ? r.bytes : size(v);
+          if (r && r.note) note = r.note; }
+    catch (e) { note = 'FAILED: ' + e.message; }
+    add(step, performance.now() - t, bytes, note);
+    return v;
+  };
+
+  const date = todayISO();
+  await timed('connect + first read', async () => {
+    const d = await getDoc(doc(db,'meta','sync'));
+    return { value: d.exists() ? d.data() : null, note: 'meta/sync' };
+  });
+  const fx = await timed("today's fixtures", async () => {
+    const snap = await getDocs(query(collection(db,'fixtures'), where('date','==',date)));
+    let bytes = 0, chunks = 0; const list = [];
+    snap.forEach(d => { chunks++; const v = d.data(); bytes += size(v); list.push(...unpack(v.f)); });
+    return { value: list, bytes, note: `${chunks} chunk(s), ${list.length} fixtures` };
+  });
+  if (!fx || !fx.length) { add('stop', 0, 0, 'no fixtures for ' + date); btn.disabled = false; return; }
+  const leagues = [...new Set(fx.map(f => f.lid).filter(Boolean))];
+  const lid = leagues[0];
+  const bundle = await timed('one league bundle', async () => {
+    const d = await getDoc(doc(db,'cache','league_'+lid));
+    if (!d.exists()) return { value:null, bytes:0, note:`cache/league_${lid} MISSING` };
+    const v = d.data(); const teams = unpackObj(v.teams);
+    return { value:{...v,teams}, bytes:size(v), note:`league ${lid}, ${Object.keys(teams).length} teams` };
+  });
+  await timed('bundle coverage', async () => {
+    const check = leagues.slice(0,10); let have = 0;
+    for (const l of check) { const d = await getDoc(doc(db,'cache','league_'+l)); if (d.exists()) have++; }
+    return { value:null, bytes:0, note:`${have}/${check.length} sampled leagues have a bundle` };
+  });
+  await timed('price one fixture', async () => {
+    const f = fx.find(x => x.hid && x.aid) || fx[0];
+    const inBundle = bundle && bundle.teams && bundle.teams[f.hid];
+    if (inBundle) return { value:null, bytes:0, note:'served from the bundle, no extra read' };
+    const [a,b] = await Promise.all([getDoc(doc(db,'teams',String(f.hid))), getDoc(doc(db,'teams',String(f.aid)))]);
+    return { value:null, bytes:(a.exists()?size(a.data()):0)+(b.exists()?size(b.data()):0),
+             note:'bundle missed — two full team documents' };
+  });
+  add('TOTAL', rows.reduce((a,r)=>a+r.ms,0), rows.reduce((a,r)=>a+r.bytes,0), '');
+  btn.disabled = false;
+};
+</script>
+</div></body></html>
