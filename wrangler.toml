@@ -1,0 +1,58 @@
+# This MUST match the Worker name in the Cloudflare dashboard. If it does
+# not, a deploy targets a different Worker than the one holding your
+# secrets, and every run reports the secrets as missing.
+name = "goalprob-cf"
+main = "src/index.mjs"
+compatibility_date = "2026-10-01"
+
+# Node's Buffer, which encodes and searches a day of raw fixtures in
+# native code. A compatibility date from 2026-08-04 on turns this on by
+# itself; the flag is here so it stays on whatever the date.
+compatibility_flags = ["nodejs_compat"]
+
+# Serves index.html. Requests to static assets are free and do not
+# count against the 100,000 daily request limit on the free plan.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Cron triggers: ONE, every two minutes. src/index.mjs picks the job by
+# the minute it fires on (UTC; Mauritius is four hours ahead):
+#   06:30 to 06:52   odds     the day's price sweep, one league a run
+#   :06 and :36      picks    record + grade the Flip x2 and HTD ledgers
+#   :26 and :56      history  this season's results files, one league a run
+#   every other tick pull, then the strategies, then team records — the
+#                    first with something to do does one small step
+#
+# Every run is one small step, because the free plan allows 10 ms of CPU
+# a run and a Worker that keeps going over has its runs cut off.
+#
+# The free plan allows five cron triggers per ACCOUNT — shared with every
+# other Worker on it — so this schedule takes a single slot. The expression
+# must stay exactly "*/2 * * * *": src/index.mjs looks for it.
+[triggers]
+crons = ["*/2 * * * *"]
+
+# Plain variables live here, and ONLY here.
+#
+# A deploy replaces the Worker's plaintext variables with whatever this
+# file lists. Anything added in the dashboard as type "Text" and not
+# repeated here is wiped on the next deploy — which is why the secrets
+# kept disappearing. The project id is not sensitive (it already appears
+# in index.html), so it is safe to keep in git and is pinned here.
+[vars]
+FIREBASE_PROJECT_ID = "zxtvfb-bb48a"
+
+# The remaining four must be added in the dashboard with type SECRET,
+# not Text. Secrets are stored separately and survive every deploy:
+#
+#   FIREBASE_CLIENT_EMAIL
+#   FIREBASE_PRIVATE_KEY
+#   APIFOOTBALL_KEY
+#   ODDS_API_KEY      (optional — odds and Flip x2 need it)
+#   ADMIN_KEY         (optional — closes the /jobs/ URLs)
+#
+# Dashboard → Settings → Variables and Secrets → Add → Type: Secret.
+
+[observability]
+enabled = true
