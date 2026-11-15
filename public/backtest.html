@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GoalProb backtest</title>
+<style>
+  :root{--bg:#0b0f14;--bg2:#121820;--bg3:#1a222d;--line:#232d3a;--fg:#e8eef5;
+        --mut:#8b9bb0;--dim:#5d6b7e;--acc:#2dd4a7;--acc2:#39b0ff;--bad:#f4525f;--warn:#f5a524}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--fg);padding:16px 12px 48px;
+       font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:720px;margin:0 auto}
+  h1{font-size:19px;margin:0 0 4px;letter-spacing:-.3px}
+  h1 span{color:var(--acc)}
+  p.sub{color:var(--dim);font-size:12px;margin:0 0 14px;line-height:1.6}
+  h2{font-size:14px;margin:24px 0 2px}
+  p.lead{font-size:12px;color:var(--dim);margin:0 0 8px;line-height:1.6}
+  .card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:13px;margin:10px 0}
+  button{width:100%;background:var(--acc);color:#04231b;border:0;border-radius:8px;
+         padding:12px;font:inherit;font-weight:700;cursor:pointer;margin-top:8px}
+  button.alt{background:var(--bg3);color:var(--fg);border:1px solid var(--line)}
+  button:disabled{opacity:.45}
+  .row{display:flex;gap:8px} .row button{flex:1}
+  input{width:100%;background:var(--bg3);border:1px solid var(--line);color:var(--fg);
+        border-radius:8px;padding:10px;font:inherit}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{text-align:left;padding:7px 5px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  th{color:var(--dim);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .ok{color:var(--acc)} .bad{color:var(--bad)} .warn{color:var(--warn)} .dim{color:var(--dim)}
+  .note{font-size:12px;color:var(--dim);line-height:1.6;background:var(--bg2);
+        border:1px solid var(--line);border-radius:8px;padding:11px;margin-top:10px}
+  .note b{color:var(--mut)}
+  .bar{height:8px;background:var(--bg3);border-radius:99px;overflow:hidden;margin-top:5px}
+  .bar i{display:block;height:100%;background:var(--acc);border-radius:99px}
+  .bar i.mk{background:var(--acc2)}
+  .kind{padding:9px 0;border-bottom:1px solid var(--line)}
+  .kind:last-child{border-bottom:0}
+  .kind .t{display:flex;align-items:baseline;gap:8px;font-size:13px}
+  .kind .t b{flex:1;font-weight:600}
+  .kind .t span{font-variant-numeric:tabular-nums;font-weight:700}
+  .kind small{display:block;font-size:11px;color:var(--dim);margin-top:3px}
+  #prog{display:none}
+  #progBar{height:6px;background:var(--bg3);border-radius:99px;overflow:hidden;margin-top:9px}
+  #progBar i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
+  #progTxt{font-size:12px;color:var(--mut);margin-top:7px}
+  pre{background:#060a0e;border:1px solid var(--line);border-radius:8px;padding:11px;
+      font-size:11px;line-height:1.5;overflow:auto;max-height:260px;white-space:pre-wrap;
+      word-break:break-word;color:var(--mut);margin:8px 0 0}
+  details summary{font-size:12px;color:var(--mut);cursor:pointer;margin-top:10px}
+  .tag{display:inline-block;font-size:10.5px;font-weight:700;border-radius:99px;padding:2px 8px;border:1px solid var(--line)}
+  .tag.ok{border-color:#1d4a3e} .tag.off{color:var(--dim)}
+</style>
+</head>
+<body><div class="wrap">
+
+<h1>Goal<span>Prob</span> backtest</h1>
+<p class="sub">Replays four seasons of real results from twenty leagues. Before every match it builds
+  exactly what the app would have had that morning, asks the model for its forecast, and only then
+  looks at the score. From the difference it works out a correction for each market — and keeps a
+  correction only if it also improves matches it was not fitted on. Nothing changes until you press Save.</p>
+
+<div class="card">
+  <input id="key" placeholder="ADMIN_KEY (leave blank if you did not set one)" autocomplete="off">
+  <button id="go">Run the backtest</button>
+  <div id="prog"><div id="progBar"><i></i></div><div id="progTxt"></div></div>
+</div>
+
+<div id="out"></div>
+
+<div class="card" id="stored">
+  <div class="row">
+    <button class="alt" id="show">Show what is stored now</button>
+    <button class="alt" id="clear">Remove stored corrections</button>
+  </div>
+  <pre id="storedOut" style="display:none"></pre>
+</div>
+
+<button class="alt" onclick="location.href='/admin'">Back to admin</button>
+<button class="alt" onclick="location.href='/'">Open the app</button>
+
+<script type="module">
+import { PM } from './model.mjs';
+import { measure, labelOf, TABLE_NAME, TABLES } from './backtest.mjs';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const pct = (x, dp = 0) => (x * 100).toFixed(dp) + '%';
+const num = n => Number(n).toLocaleString();
+
+const keyEl = $('key');
+try { keyEl.value = localStorage.getItem('gp_admin_key') || ''; } catch {}
+keyEl.addEventListener('input', () => { try { localStorage.setItem('gp_admin_key', keyEl.value); } catch {} });
+const withKey = path => {
+  const k = keyEl.value.trim();
+  return k ? path + (path.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(k) : path;
+};
+
+const progress = (frac, text) => {
+  $('prog').style.display = 'block';
+  $('progBar').firstElementChild.style.width = Math.round(Math.min(Math.max(frac, 0), 1) * 100) + '%';
+  $('progTxt').textContent = text;
+};
+
+/* One request to the Worker, with a deadline: a phone on a weak signal
+   does not fail a request, it just never finishes it. */
+async function ask(path, ms = 30000) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  try {
+    const res = await fetch(withKey(path), { signal: ctl.signal });
+    const text = await res.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch {}
+    if (res.status === 401) throw Object.assign(new Error('The admin key is missing or wrong.'), { fatal: true });
+    if (!json) throw new Error(`HTTP ${res.status}`);
+    if (json.ok === false) throw new Error(json.error || `HTTP ${res.status}`);
+    return json;
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('timed out');
+    throw e;
+  } finally { clearTimeout(t); }
+}
+
+/* ---------------- load ---------------- */
+async function loadAll() {
+  const plan = await ask('/jobs/rows?list=1');
+  const jobs = [];
+  for (const season of plan.seasons) for (const lg of plan.leagues) jobs.push({ league: lg.code, name: lg.name, season });
+
+  const files = [], missing = [];
+  let done = 0, matches = 0, next = 0, fatal = null;
+  const worker = async () => {
+    while (next < jobs.length && !fatal) {
+      const j = jobs[next++];
+      let got = null, err = '';
+      for (let attempt = 0; attempt < 2 && !got && !fatal; attempt++) {
+        try { got = await ask(`/jobs/rows?league=${encodeURIComponent(j.league)}&season=${encodeURIComponent(j.season)}`); }
+        catch (e) { err = e.message; if (e.fatal) fatal = e; }
+      }
+      done++;
+      if (got && Array.isArray(got.rows) && got.rows.length) {
+        files.push({ league: j.league, season: j.season, rows: got.rows });
+        matches += got.rows.length;
+      } else missing.push(`${j.league} ${j.season}${got && got.note ? ' — ' + got.note : err ? ' — ' + err : ' — empty'}`);
+      progress(0.5 * done / jobs.length, `Loading results: ${done} of ${jobs.length} files · ${num(matches)} matches`);
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  if (fatal) throw fatal;
+  /* a fixed order, so the same data always gives the same answer */
+  files.sort((a, b) => a.season.localeCompare(b.season) || a.league.localeCompare(b.league));
+  return { files, missing, plan, matches };
+}
+
+/* ---------------- report ---------------- */
+function kindsHtml(cmp) {
+  if (!cmp) return '';
+  /* how much of what the closing price knows each kind of forecast
+     captures: 0% is "guess the average every time", 100% is the price */
+  const span = cmp.chance - cmp.mk;
+  const share = v => span > 0 ? Math.max(0, Math.min(1.05, (cmp.chance - v) / span)) : 0;
+  const row = (name, v, sub, cls = '') => `
+    <div class="kind">
+      <div class="t"><b>${esc(name)}</b><span>${pct(share(v))}</span></div>
+      <div class="bar"><i class="${cls}" style="width:${Math.min(share(v), 1) * 100}%"></i></div>
+      <small>${esc(sub)} · log loss ${v.toFixed(4)}</small>
+    </div>`;
+  return `
+    <h2>Which kind of forecast is closest to what happened</h2>
+    <p class="lead">Full-time result, on the same ${num(cmp.n)} matches. The scale runs from 0% — saying the
+      league average every time — to 100%, the price the match closed at with the bookmaker's margin removed.</p>
+    <div class="card">
+      ${row('Goals only', cmp.g, 'what a league with no shot data gets')}
+      ${row('Goals and shots on target', cmp.m, 'the model as it has been until now')}
+      ${row('Ratings from closing prices', cmp.r, 'new: each side rated from the prices its recent matches closed at')}
+      ${row('The closing price itself', cmp.mk, 'the yardstick — only known at kick-off', 'mk')}
+    </div>`;
+}
+
+function settingsHtml(why) {
+  if (!why || !why.length) return '';
+  const fmt = (key, v) => key === 'shotMix' ? (v > 0 ? `on (${pct(v)})` : 'off') : pct(v);
+  const rows = why.map(w => {
+    const tried = w.tried.map(t => {
+      const gain = t.gain * 1000, se = t.se * 2000;
+      if (!t.n) return `${fmt(w.key, t.value)}: not enough matches to try`;
+      if (gain < 0) return `${fmt(w.key, t.value)}: worse by ${(-gain).toFixed(2)}`;
+      return `${fmt(w.key, t.value)}: better by ${gain.toFixed(2)} — ${gain > se ? 'clear' : `could be chance (needs more than ${se.toFixed(2)})`}`;
+    }).join('<br>');
+    return `<tr>
+      <td><b style="color:var(--fg)">${esc(w.what)}</b><br><span class="dim">${tried}</span></td>
+      <td class="n">${w.changed
+        ? `<span class="tag ok">changed to ${fmt(w.key, w.now)}</span>`
+        : `<span class="tag off">kept at ${fmt(w.key, w.was)}</span>`}</td></tr>`;
+  }).join('');
+  return `
+    <h2>Three settings, decided by the results</h2>
+    <p class="lead">Each alternative was run over every match beside the current setting. A setting changes only
+      when the alternative is better by more than chance could explain. Figures are loss per thousand forecasts.</p>
+    <div class="card"><table>${rows}</table></div>`;
+}
+
+function describe(lines) {
+  /* a slope under 1 means the forecasts were too extreme and are pulled
+     toward the middle; over 1, too timid */
+  const ks = Object.keys(lines);
+  if (!ks.length) return '';
+  const slope = ks.reduce((a, k) => a + lines[k][1], 0) / ks.length;
+  const d = Math.round(Math.abs(1 - slope) * 100);
+  const lean = d < 2 ? 'about the right spread' : slope < 1 ? `too extreme by about ${d}%` : `too cautious by about ${d}%`;
+  const shifts = ks.filter(k => Math.abs(lines[k][0]) >= 0.05)
+    .map(k => `${labelOf(k).toLowerCase()} ${lines[k][0] > 0 ? 'under' : 'over'}-called`);
+  return lean + (shifts.length ? '; ' + shifts.join(', ') : '');
+}
+
+function tablesHtml(report) {
+  let html = `
+    <h2>Corrections</h2>
+    <p class="lead">Fitted on the earlier ${num(report.split.train)} forecasts, judged on the later ${num(report.split.test)}.
+      "Before" and "after" are the loss on those later matches — lower is better. A correction that does not
+      improve them is thrown away, however good it looked on the matches it was fitted to.</p>`;
+  for (const T of TABLES) {
+    const t = report.tables[T];
+    if (!t) continue;
+    if (!t.n) { html += `<div class="card"><b>${esc(t.name)}</b><div class="dim" style="font-size:12px;margin-top:4px">No forecasts of this kind in the data.</div></div>`; continue; }
+    html += `<div class="card"><b>${esc(t.name)}</b> <span class="dim" style="font-size:12px">· ${num(t.n)} forecasts</span>
+      <table style="margin-top:6px"><tr><th>Market</th><th class="n">Before</th><th class="n">After</th><th class="n"></th></tr>
+      ${t.rows.map(r => `<tr>
+        <td>${esc(r.name)}${r.kept ? `<br><span class="dim">${esc(describe(r.lines))}</span>` : (r.why ? `<br><span class="dim">${esc(r.why)}</span>` : '')}</td>
+        <td class="n">${Number.isFinite(r.before) ? r.before.toFixed(4) : '—'}</td>
+        <td class="n ${r.kept ? 'ok' : ''}">${Number.isFinite(r.after) ? r.after.toFixed(4) : '—'}</td>
+        <td class="n">${r.kept ? '<span class="tag ok">kept</span>' : '<span class="tag off">not used</span>'}</td></tr>`).join('')}
+      </table></div>`;
+  }
+  return html;
+}
+
+function htdHtml(report) {
+  const h = report.htd || {};
+  const which = ['mi', 'm1', 'r', 'm', 'g'].find(t => h[t]);
+  if (!which) return '';
+  const pick = h[which];
+  const rows = (pick.after || pick.before);
+  if (!rows.length) return '';
+  const total = rows.reduce((a, b) => a + b.n, 0);
+  return `
+    <h2>The half-time draw: what was said against what happened</h2>
+    <p class="lead">${esc(TABLE_NAME[which])}, ${pick.after ? 'after correction' : 'no correction needed'}, on the later
+      ${num(total)} matches only. This is the check behind the HTD list: when it says 45%, the break should be level
+      about 45 times in 100.</p>
+    <div class="card"><table>
+      <tr><th>Forecast said</th><th class="n">Matches</th><th class="n">Said</th><th class="n">Happened</th><th class="n">Gap</th></tr>
+      ${rows.map(b => {
+        const gap = b.was - b.said, se = Math.sqrt(b.said * (1 - b.said) / b.n);
+        const cls = Math.abs(gap) > 2 * se ? 'warn' : 'ok';
+        const band = b.lo <= 0 ? `under ${pct(b.hi)}` : b.hi > 1 ? `${pct(b.lo)} or more` : `${pct(b.lo)}–${pct(b.hi)}`;
+        return `<tr><td>${band}</td><td class="n">${num(b.n)}</td><td class="n">${pct(b.said, 1)}</td>
+          <td class="n">${pct(b.was, 1)}</td><td class="n ${cls}">${gap >= 0 ? '+' : ''}${(gap * 100).toFixed(1)}</td></tr>`;
+      }).join('')}
+    </table></div>
+    <div class="note">A gap shown in amber is bigger than chance alone would produce with that many matches.
+      Small bands will always wobble; it is the large ones that matter.</div>`;
+}
+
+let lastCal = null;
+
+function render(res, load) {
+  const { run, report, cal, why } = res;
+  lastCal = cal;
+  const kept = TABLES.reduce((a, T) => a + (cal[T] ? Object.keys(cal[T]).length : 0), 0);
+  const canSave = cal.n >= 400;
+
+  $('out').innerHTML = `
+    <h2>What was measured</h2>
+    <div class="card" style="font-size:13px;line-height:1.7">
+      <b>${num(run.matches)}</b> matches from <b>${run.leagues.length}</b> leagues, ${esc(run.from)} to ${esc(run.to)}.<br>
+      <b>${num(run.cases.length)}</b> forecasts checked — a match counts once both sides have fifteen earlier matches on record.<br>
+      <b>${num(run.rated)}</b> of them could use ratings from closing prices; <b>${num(run.priced)}</b> had a closing price to compare with.
+      ${load.missing.length ? `<details><summary>${load.missing.length} season file${load.missing.length === 1 ? '' : 's'} could not be loaded</summary>
+        <pre>${esc(load.missing.join('\n'))}</pre></details>` : ''}
+    </div>
+
+    ${kindsHtml(report.compare)}
+    ${settingsHtml(why)}
+    ${tablesHtml(report)}
+    ${htdHtml(report)}
+
+    <h2>Save</h2>
+    <div class="card">
+      <div style="font-size:13px;line-height:1.65">
+        ${canSave
+          ? `${kept} correction line${kept === 1 ? '' : 's'}, the measured base rates${
+              (cal.shotMix !== undefined || cal.h1Blend !== undefined || cal.wr !== undefined) ? ' and the changed settings' : ''
+            } are ready. Saving puts them into use in the app straight away; every forecast is recalculated from them the next time the app is opened.`
+          : `Only ${num(cal.n)} forecasts could be checked, and at least 400 are needed before corrections mean anything. Nothing to save yet.`}
+      </div>
+      <button id="save" ${canSave ? '' : 'disabled'}>Save these corrections</button>
+      <pre id="saveOut" style="display:none"></pre>
+      <details><summary>The exact numbers</summary><pre>${esc(JSON.stringify(cal, null, 1))}</pre></details>
+    </div>
+    <div class="note"><b>What this can and cannot tell you.</b> It measures how well calibrated the forecasts are — whether
+      40% means 40%. It does not say a bet is worth taking: that depends on the price, and the last block above shows how
+      much closer the closing price is to the truth than any forecast built without it. Run it again every month or so;
+      the corrections drift as the seasons do.</div>`;
+
+  const save = $('save');
+  if (save) save.onclick = async () => {
+    save.disabled = true;
+    const o = $('saveOut'); o.style.display = 'block'; o.textContent = 'Saving…';
+    try {
+      const r = await ask('/jobs/calib?set=' + encodeURIComponent(JSON.stringify(lastCal)));
+      o.innerHTML = `<span class="ok">Saved.</span> Fitted on ${num(r.calibration.n)} forecasts, stored ${esc(r.calibration.at)}.\nOpen the app and the corrections are in use.`;
+    } catch (e) {
+      o.innerHTML = `<span class="bad">Not saved:</span> ${esc(e.message)}`;
+      save.disabled = false;
+    }
+  };
+}
+
+/* ---------------- run ---------------- */
+$('go').onclick = async () => {
+  const go = $('go');
+  go.disabled = true;
+  $('out').innerHTML = '';
+  try {
+    progress(0, 'Asking which seasons to load…');
+    const load = await loadAll();
+    if (!load.files.length) throw new Error('No results could be loaded. ' + (load.missing[0] || ''));
+    const stage = { replay: 'Replaying', again: 'Replaying with the chosen settings', fit: 'Fitting corrections' };
+    const res = await measure(load.files, {
+      onProgress: (s, f) => progress(s === 'replay' ? 0.5 + 0.3 * f : s === 'again' ? 0.8 + 0.15 * f : 0.97,
+                                     `${stage[s]}… ${s === 'fit' ? '' : Math.round(f * 100) + '%'}`)
+    });
+    progress(1, `Done — ${num(res.run.cases.length)} forecasts checked.`);
+    render(res, load);
+  } catch (e) {
+    console.error(e);
+    $('out').innerHTML = `<div class="note"><b class="bad">The backtest stopped.</b> ${esc(e.message)}
+      ${e.fatal ? '<br>Type the key into the box above (the same one the admin page uses) and run it again.'
+                : '<br>If the connection dropped, run it again — nothing has been changed.'}</div>`;
+    progress(0, 'Stopped.');
+  }
+  go.disabled = false;
+};
+
+$('show').onclick = async () => {
+  const o = $('storedOut'); o.style.display = 'block'; o.textContent = 'Reading…';
+  try { const r = await ask('/jobs/calib'); o.textContent = JSON.stringify(r.calibration, null, 1); }
+  catch (e) { o.textContent = 'Could not read: ' + e.message; }
+};
+$('clear').onclick = async () => {
+  if (!confirm('Remove the stored corrections? The model will run uncorrected until the backtest is saved again.')) return;
+  const o = $('storedOut'); o.style.display = 'block'; o.textContent = 'Removing…';
+  try { const r = await ask('/jobs/calib?clear=1'); o.textContent = r.note || 'Removed.'; }
+  catch (e) { o.textContent = 'Could not remove: ' + e.message; }
+};
+
+/* the engine this page is running, for the record */
+console.log('engine: profile v' + PM.PROFILE_V + ', K ' + PM.K + ', half-life ' + PM.HALF_LIFE + ', rating weight ' + PM.W_RATING);
+</script>
+</div></body></html>
